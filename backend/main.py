@@ -1,3 +1,4 @@
+
 # ---------------------------------------------------------
 # IMPORTS
 # ---------------------------------------------------------
@@ -111,6 +112,41 @@ class AdminLogin(BaseModel):
 
 
 # ---------------------------------------------------------
+# USER SIGNUP DATA
+# ---------------------------------------------------------
+
+# This defines what data the frontend must send
+# when a new user creates an account.
+
+class UserRegister(BaseModel):
+
+    # User name
+    name: str
+
+    # User email
+    email: str
+
+    # User password
+    password: str
+
+
+# ---------------------------------------------------------
+# USER LOGIN DATA
+# ---------------------------------------------------------
+
+# This defines what data the frontend must send
+# when an existing user signs in.
+
+class UserLogin(BaseModel):
+
+    # User email
+    email: str
+
+    # User password
+    password: str
+
+
+# ---------------------------------------------------------
 # HOME PAGE
 # ---------------------------------------------------------
 
@@ -182,6 +218,374 @@ def admin_dashboard():
     return FileResponse(
         FRONTEND_DIR / "ad_dashboard.html"
     )
+
+
+# ---------------------------------------------------------
+# USER LOGIN PAGE
+# ---------------------------------------------------------
+
+@app.get("/user_login.html")
+async def user_login():
+
+    return FileResponse(
+        FRONTEND_DIR / "user_login.html"
+    )
+
+
+# ---------------------------------------------------------
+# USER SIGNUP API
+# ---------------------------------------------------------
+
+# This API receives:
+#
+# Name
+# Email
+# Password
+#
+# and stores them in the user_access table.
+
+@app.post("/api/auth/register")
+def user_register(data: UserRegister):
+
+    connection = None
+    cursor = None
+
+    try:
+
+        # -------------------------------------------------
+        # CONNECT TO POSTGRESQL
+        # -------------------------------------------------
+
+        connection = get_db_connection()
+
+        # Create database cursor
+        cursor = connection.cursor()
+
+
+        # -------------------------------------------------
+        # CHECK IF EMAIL ALREADY EXISTS
+        # -------------------------------------------------
+
+        cursor.execute(
+            """
+            SELECT user_id
+            FROM user_access
+            WHERE email = %s
+            """,
+            (data.email,)
+        )
+
+
+        # Get existing user
+        existing_user = cursor.fetchone()
+
+
+        # -------------------------------------------------
+        # EMAIL ALREADY EXISTS
+        # -------------------------------------------------
+
+        if existing_user:
+
+            raise HTTPException(
+                status_code=400,
+                detail="Email already registered"
+            )
+
+
+        # -------------------------------------------------
+        # INSERT NEW USER
+        # -------------------------------------------------
+
+        cursor.execute(
+            """
+            INSERT INTO user_access
+            (
+                name,
+                email,
+                password
+            )
+            VALUES
+            (
+                %s,
+                %s,
+                %s
+            )
+            RETURNING user_id, name, email
+            """,
+            (
+                data.name,
+                data.email,
+                data.password
+            )
+        )
+
+
+        # Get newly created user
+        user = cursor.fetchone()
+
+
+        # Save changes to database
+        connection.commit()
+
+
+        # -------------------------------------------------
+        # SIGNUP SUCCESSFUL
+        # -------------------------------------------------
+
+        return {
+
+            "success": True,
+
+            "message": "Account created successfully",
+
+            "user_id": user[0],
+
+            "name": user[1],
+
+            "email": user[2]
+
+        }
+
+
+    # -----------------------------------------------------
+    # HANDLE FASTAPI ERRORS
+    # -----------------------------------------------------
+
+    except HTTPException:
+
+        if connection:
+
+            connection.rollback()
+
+        raise
+
+
+    # -----------------------------------------------------
+    # HANDLE DATABASE ERRORS
+    # -----------------------------------------------------
+
+    except Exception:
+
+        if connection:
+
+            connection.rollback()
+
+        raise HTTPException(
+            status_code=500,
+            detail="Unable to create account"
+        )
+
+
+    # -----------------------------------------------------
+    # CLOSE DATABASE CONNECTION
+    # -----------------------------------------------------
+
+    finally:
+
+        if cursor:
+
+            cursor.close()
+
+        if connection:
+
+            connection.close()
+
+
+# ---------------------------------------------------------
+# USER LOGIN API
+# ---------------------------------------------------------
+
+# This API receives:
+#
+# Email
+# Password
+#
+# and checks them against the user_access table.
+
+@app.post("/api/auth/login")
+def user_login_api(data: UserLogin):
+
+    connection = None
+    cursor = None
+
+    try:
+
+        # -------------------------------------------------
+        # CONNECT TO POSTGRESQL
+        # -------------------------------------------------
+
+        connection = get_db_connection()
+
+        # Create database cursor
+        cursor = connection.cursor()
+
+
+        # -------------------------------------------------
+        # FIND USER BY EMAIL
+        # -------------------------------------------------
+
+        cursor.execute(
+            """
+            SELECT
+                user_id,
+                name,
+                email,
+                password,
+                active_status
+            FROM user_access
+            WHERE email = %s
+            """,
+            (data.email,)
+        )
+
+
+        # Get the user record
+        user = cursor.fetchone()
+
+
+        # -------------------------------------------------
+        # CHECK IF EMAIL EXISTS
+        # -------------------------------------------------
+
+        if not user:
+
+            raise HTTPException(
+                status_code=401,
+                detail="Invalid email or password"
+            )
+
+
+        # -------------------------------------------------
+        # GET USER DATA
+        # -------------------------------------------------
+
+        user_id = user[0]
+
+        name = user[1]
+
+        email = user[2]
+
+        password = user[3]
+
+        active_status = user[4]
+
+
+        # -------------------------------------------------
+        # CHECK IF USER IS ACTIVE
+        # -------------------------------------------------
+
+        if not active_status:
+
+            raise HTTPException(
+                status_code=403,
+                detail="User account is inactive"
+            )
+
+
+        # -------------------------------------------------
+        # CHECK PASSWORD
+        # ---------------------------------------------------------
+
+        # Here the database contains the normal password
+        # in the "password" column.
+        #
+        # So we directly compare:
+        #
+        # password entered by user
+        #        ==
+        # password stored in database
+
+        if data.password != password:
+
+            raise HTTPException(
+                status_code=401,
+                detail="Invalid email or password"
+            )
+
+
+        # -------------------------------------------------
+        # UPDATE LOGIN TIME
+        # -------------------------------------------------
+
+        cursor.execute(
+            """
+            UPDATE user_access
+            SET
+                last_login = CURRENT_TIMESTAMP,
+                last_activity = CURRENT_TIMESTAMP
+            WHERE user_id = %s
+            """,
+            (user_id,)
+        )
+
+
+        # Save changes
+        connection.commit()
+
+
+        # -------------------------------------------------
+        # LOGIN SUCCESSFUL
+        # -------------------------------------------------
+
+        return {
+
+            "success": True,
+
+            "message": "User login successful",
+
+            "user_id": user_id,
+
+            "name": name,
+
+            "username": name,
+
+            "email": email
+
+        }
+
+
+    # -----------------------------------------------------
+    # HANDLE FASTAPI ERRORS
+    # -----------------------------------------------------
+
+    except HTTPException:
+
+        if connection:
+
+            connection.rollback()
+
+        raise
+
+
+    # -----------------------------------------------------
+    # HANDLE DATABASE ERRORS
+    # -----------------------------------------------------
+
+    except Exception:
+
+        if connection:
+
+            connection.rollback()
+
+        raise HTTPException(
+            status_code=500,
+            detail="Unable to login"
+        )
+
+
+    # -----------------------------------------------------
+    # CLOSE DATABASE CONNECTION
+    # -----------------------------------------------------
+
+    finally:
+
+        if cursor:
+
+            cursor.close()
+
+        if connection:
+
+            connection.close()
 
 
 # ---------------------------------------------------------
@@ -312,7 +716,9 @@ def admin_login(data: AdminLogin):
     finally:
 
         if cursor:
+
             cursor.close()
 
         if connection:
+
             connection.close()
