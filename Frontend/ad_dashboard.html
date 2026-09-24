@@ -1,191 +1,361 @@
-<!DOCTYPE html>
 
+<!DOCTYPE html>
 <html lang="en">
 
 <head>
+
     <meta charset="UTF-8">
 
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BLENCEKART | Admin Dashboard</title>
 
-<title>BLENCEKART | Admin Dashboard</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
 
-<!-- Tailwind CSS -->
-<script src="https://cdn.tailwindcss.com"></script>
+    <!-- Font Awesome -->
+    <link
+        rel="stylesheet"
+        href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css"
+    >
 
-<script>
-    tailwind.config = {
-        theme: {
-            extend: {
-                fontFamily: {
-                    sans: ["Inter", "Arial", "sans-serif"]
-                }
-            }
+    <style>
+
+        * {
+            box-sizing: border-box;
         }
-    }
-</script>
 
-<style>
+        body {
+            margin: 0;
+            background: #030712;
+            color: white;
+            font-family: Arial, Helvetica, sans-serif;
+        }
 
-    html {
-        scroll-behavior: smooth;
-    }
+        /* SIDEBAR */
 
-    body {
-        margin: 0;
-        overflow-x: hidden;
-        background: #020617;
-    }
+        .sidebar {
+            width: 288px;
+            position: fixed;
+            top: 0;
+            left: 0;
+            bottom: 0;
+            background: #050b18;
+            border-right: 1px solid #1e293b;
+            z-index: 100;
+        }
 
-    /* =========================================
-       BLUE WORLD BACKGROUND
-    ========================================== */
+        .sidebar-item {
+            transition: all 0.2s ease;
+        }
 
-    .blue-world {
-        background:
-            radial-gradient(
-                circle at 10% 10%,
-                rgba(37, 99, 235, 0.25),
-                transparent 30%
-            ),
+        .sidebar-item:hover {
+            background: rgba(30, 64, 175, 0.35);
+            color: white;
+        }
 
-            radial-gradient(
-                circle at 90% 20%,
-                rgba(6, 182, 212, 0.18),
-                transparent 30%
-            ),
+        .sidebar-item.active {
+            background: rgba(37, 99, 235, 0.25);
+            color: #67e8f9;
+            border-left: 3px solid #22d3ee;
+        }
 
-            #020617;
-    }
+        /* MAIN AREA */
 
-    /* =========================================
-       GLASS EFFECT
-    ========================================== */
+        .main-area {
+            margin-left: 288px;
+            min-height: 100vh;
+            width: calc(100% - 288px);
+        }
 
-    .glass {
-        background:
-            rgba(2, 6, 23, 0.68);
+        /* HEADER */
 
-        border:
-            1px solid rgba(255, 255, 255, 0.12);
+        .dashboard-header {
+            height: 82px;
+            position: sticky;
+            top: 0;
+            z-index: 50;
+            background: rgba(3, 7, 18, 0.96);
+            backdrop-filter: blur(12px);
+            border-bottom: 1px solid #1e293b;
+        }
 
-        backdrop-filter:
-            blur(22px);
+        /* CONTENT */
 
-        -webkit-backdrop-filter:
-            blur(22px);
+        .content-area {
+            padding: 32px;
+            width: 100%;
+        }
 
-        box-shadow:
-            0 30px 100px rgba(0, 0, 0, 0.45),
+        /* RAG CONTAINER */
 
-            0 0 60px
-            rgba(37, 99, 235, 0.12);
-    }
+        #ragDocumentContainer {
+            width: 100%;
+            min-height: calc(100vh - 146px);
+        }
 
-    /* =========================================
-       GRADIENT TEXT
-    ========================================== */
+        #ragDocumentContent {
+            width: 100%;
+        }
 
-    .blue-text {
-        background:
-            linear-gradient(
-                90deg,
-                #60a5fa,
-                #22d3ee,
-                #818cf8
-            );
+        /* CARDS */
 
-        -webkit-background-clip:
-            text;
+        .dashboard-card {
+            background: rgba(15, 23, 42, 0.75);
+            border: 1px solid #1e293b;
+            border-radius: 16px;
+            padding: 24px;
+        }
 
-        background-clip:
-            text;
+        .dashboard-card:hover {
+            border-color: #2563eb;
+        }
 
-        color:
-            transparent;
-    }
+        /* SCROLLBAR */
 
-    /* =========================================
-       SIDEBAR MENU HOVER
-    ========================================== */
+        ::-webkit-scrollbar {
+            width: 7px;
+        }
 
-    .sidebar-item {
-        transition: all 0.3s ease;
-    }
+        ::-webkit-scrollbar-track {
+            background: #020617;
+        }
 
-    .sidebar-item:hover {
-        background: rgba(37, 99, 235, 0.15);
-        border-color: rgba(59, 130, 246, 0.25);
-        color: #60a5fa;
-        transform: translateX(3px);
-    }
+        ::-webkit-scrollbar-thumb {
+            background: #1e40af;
+            border-radius: 10px;
+        }
 
-    /* =========================================
-       LOGOUT HOVER
-    ========================================== */
+        ::-webkit-scrollbar-thumb:hover {
+            background: #2563eb;
+        }
 
-    .logout-button {
-        transition: all 0.3s ease;
-    }
+        /* CHAT HISTORY */
 
-    .logout-button:hover {
-        background: rgba(239, 68, 68, 0.10);
-        border-color: rgba(239, 68, 68, 0.25);
-        color: #fca5a5;
-    }
+        .history-toolbar {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+            margin-bottom: 20px;
+        }
 
-</style>
-```
+        .history-choice,
+        .feedback-choice {
+            border: 1px solid #334155;
+            background: #0f172a;
+            color: #cbd5e1;
+            padding: 11px 18px;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .history-choice:hover,
+        .feedback-choice:hover {
+            border-color: #22d3ee;
+            color: white;
+        }
+
+        .history-choice.active,
+        .feedback-choice.active {
+            background: rgba(37, 99, 235, 0.25);
+            border-color: #22d3ee;
+            color: #67e8f9;
+        }
+
+        .history-layout,
+        .feedback-layout {
+            display: grid;
+            grid-template-columns: minmax(280px, 0.9fr) minmax(420px, 1.6fr);
+            gap: 20px;
+            min-height: 480px;
+        }
+
+        .user-list-panel,
+        .conversation-panel {
+            background: rgba(15, 23, 42, 0.75);
+            border: 1px solid #1e293b;
+            border-radius: 16px;
+            overflow: hidden;
+        }
+
+        .panel-header {
+            padding: 18px 20px;
+            border-bottom: 1px solid #1e293b;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .user-list {
+            max-height: 540px;
+            overflow-y: auto;
+        }
+
+        .user-row {
+            width: 100%;
+            text-align: left;
+            padding: 16px 18px;
+            border: 0;
+            border-bottom: 1px solid rgba(30, 41, 59, 0.75);
+            background: transparent;
+            color: white;
+            cursor: pointer;
+            transition: background 0.2s ease;
+        }
+
+        .user-row:hover,
+        .user-row.active {
+            background: rgba(30, 64, 175, 0.25);
+        }
+
+        .user-row:last-child {
+            border-bottom: 0;
+        }
+
+        .conversation-list {
+            max-height: 540px;
+            overflow-y: auto;
+            padding: 16px;
+        }
+
+        .conversation-item {
+            width: 100%;
+            text-align: left;
+            padding: 16px;
+            margin-bottom: 10px;
+            border: 1px solid #1e293b;
+            border-radius: 12px;
+            background: #0b1220;
+            color: white;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .conversation-item:hover,
+        .conversation-item.active {
+            border-color: #2563eb;
+            background: rgba(30, 64, 175, 0.18);
+        }
+
+        .chat-view {
+            padding: 20px;
+            max-height: 620px;
+            overflow-y: auto;
+        }
+
+        .chat-message {
+            padding: 14px 16px;
+            margin-bottom: 12px;
+            border-radius: 12px;
+            border: 1px solid #1e293b;
+        }
+
+        .chat-message.user {
+            background: rgba(37, 99, 235, 0.12);
+        }
+
+        .chat-message.assistant {
+            background: rgba(15, 23, 42, 0.9);
+        }
+
+        .feedback-actions {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+            margin-top: 20px;
+        }
+
+        .primary-btn {
+            border: 0;
+            background: linear-gradient(135deg, #2563eb, #0891b2);
+            color: white;
+            padding: 12px 18px;
+            border-radius: 10px;
+            cursor: pointer;
+            font-weight: 600;
+        }
+
+        .primary-btn:hover {
+            opacity: 0.9;
+        }
+
+        .primary-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .secondary-btn {
+            border: 1px solid #334155;
+            background: #0f172a;
+            color: #cbd5e1;
+            padding: 12px 18px;
+            border-radius: 10px;
+        }
+
+        .empty-state {
+            min-height: 260px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            padding: 30px;
+            color: #64748b;
+        }
+
+        @media (max-width: 900px) {
+
+            .history-layout,
+            .feedback-layout {
+                grid-template-columns: 1fr;
+            }
+
+            .sidebar {
+                width: 230px;
+            }
+
+            .main-area {
+                margin-left: 230px;
+                width: calc(100% - 230px);
+            }
+
+        }
+
+    </style>
 
 </head>
 
-<body class="blue-world min-h-screen font-sans text-white">
 
-```
-<!-- =========================================
-     MAIN DASHBOARD
-========================================== -->
-
-<div class="flex min-h-screen">
+<body>
 
 
-    <!-- =========================================
-         SIDEBAR
-    ========================================== -->
+    <!-- ========================================================= -->
+    <!-- SIDEBAR -->
+    <!-- ========================================================= -->
 
-    <aside
-        class="glass fixed left-0 top-0 z-30 flex h-screen w-72 flex-col border-r border-white/10"
-    >
+    <aside class="sidebar">
 
-        <!-- =====================================
-             SIDEBAR HEADER
-        ====================================== -->
-
-        <div class="border-b border-white/10 px-6 py-6">
-
-            <!-- BLENCEKART LOGO -->
+        <div class="px-6 py-6 border-b border-slate-800">
 
             <div class="flex items-center gap-3">
 
                 <div
-                    class="flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 to-cyan-400 text-xl font-black text-white shadow-lg shadow-blue-500/30"
+                    class="w-11 h-11 rounded-xl bg-gradient-to-br from-blue-600 to-cyan-400 flex items-center justify-center"
                 >
-                    B
+
+                    <i class="fas fa-glasses text-white text-lg"></i>
+
                 </div>
 
                 <div>
 
-                    <div
-                        class="text-xl font-black tracking-tight text-white"
-                    >
-                        BLENCE<span class="text-blue-400">KART</span>
-                    </div>
+                    <h1 class="text-xl font-bold text-white">
+                        BLENCEKART
+                    </h1>
 
-                    <div
-                        class="text-[9px] font-bold uppercase tracking-[0.3em] text-slate-400"
-                    >
+                    <p class="text-xs text-cyan-400">
                         Admin Portal
-                    </div>
+                    </p>
 
                 </div>
 
@@ -194,37 +364,16 @@
         </div>
 
 
-        <!-- =====================================
-             SIDEBAR MENU
-        ====================================== -->
-
-        <nav class="flex-1 px-4 py-6">
-
-            <!-- CHAT HISTORY -->
+        <nav class="px-4 py-6">
 
             <a
                 href="#"
-                class="sidebar-item mb-3 flex items-center gap-4 rounded-xl border border-transparent px-4 py-4 text-sm font-semibold text-slate-300"
+                onclick="showDashboard(event)"
+                id="chatHistoryLink"
+                class="sidebar-item active flex items-center gap-3 px-4 py-3 rounded-lg text-gray-300 mb-2"
             >
 
-                <!-- Chat History Icon -->
-
-                <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke-width="1.8"
-                    stroke="currentColor"
-                    class="h-5 w-5"
-                >
-
-                    <path
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                        d="M8.625 9.75h6.75m-6.75 3h4.5M12 3.75a8.25 8.25 0 0 0-7.425 11.85L3.75 20.25l4.65-1.2A8.25 8.25 0 1 0 12 3.75Z"
-                    />
-
-                </svg>
+                <i class="fas fa-comments w-5"></i>
 
                 <span>
                     Chat History
@@ -233,43 +382,14 @@
             </a>
 
 
-            <!-- RAG DOCUMENTATION -->
-
             <a
-                href="#"
-                class="sidebar-item mb-3 flex items-center gap-4 rounded-xl border border-transparent px-4 py-4 text-sm font-semibold text-slate-300"
+                href="#rag"
+                onclick="openRAGDocument(event)"
+                id="ragDocumentationLink"
+                class="sidebar-item flex items-center gap-3 px-4 py-3 rounded-lg text-gray-300 mb-2"
             >
 
-                <!-- Documentation Icon -->
-
-                <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke-width="1.8"
-                    stroke="currentColor"
-                    class="h-5 w-5"
-                >
-
-                    <path
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                        d="M19.5 14.25v-8.25a2.25 2.25 0 0 0-2.25-2.25h-6.69a2.25 2.25 0 0 0-1.59.66L5.16 6.66a2.25 2.25 0 0 0-.66 1.59v9.5a2.25 2.25 0 0 0 2.25 2.25h6.75"
-                    />
-
-                    <path
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                        d="M9 7.5h6M9 11.25h6M9 15h3"
-                    />
-
-                    <path
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                        d="M16.5 15.75v5.25m0 0 2.25-2.25M16.5 21l-2.25-2.25"
-                    />
-
-                </svg>
+                <i class="fas fa-file-alt w-5"></i>
 
                 <span>
                     RAG Documentation
@@ -278,31 +398,14 @@
             </a>
 
 
-            <!-- FEEDBACK GENERATION -->
-
             <a
                 href="#"
-                class="sidebar-item flex items-center gap-4 rounded-xl border border-transparent px-4 py-4 text-sm font-semibold text-slate-300"
+                onclick="showFeedback(event)"
+                id="feedbackLink"
+                class="sidebar-item flex items-center gap-3 px-4 py-3 rounded-lg text-gray-300 mb-2"
             >
 
-                <!-- Feedback Icon -->
-
-                <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke-width="1.8"
-                    stroke="currentColor"
-                    class="h-5 w-5"
-                >
-
-                    <path
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                        d="M7.5 8.25h9m-9 3h6m-9.75 8.25 2.25-3.75V6.75A2.25 2.25 0 0 1 8.25 4.5h9a2.25 2.25 0 0 1 2.25 2.25v7.5a2.25 2.25 0 0 1-2.25 2.25H12l-4.5 3Z"
-                    />
-
-                </svg>
+                <i class="fas fa-comment-dots w-5"></i>
 
                 <span>
                     Feedback Generation
@@ -313,41 +416,16 @@
         </nav>
 
 
-        <!-- =====================================
-             LOGOUT BUTTON
-        ====================================== -->
-
-        <div class="border-t border-white/10 p-4">
+        <div
+            class="absolute bottom-0 left-0 right-0 p-4 border-t border-slate-800"
+        >
 
             <button
                 onclick="logout()"
-                class="logout-button flex w-full items-center gap-4 rounded-xl border border-transparent px-4 py-4 text-sm font-semibold text-slate-300"
+                class="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-gray-300 hover:bg-red-900/30 hover:text-red-400 transition"
             >
 
-                <!-- Logout Icon -->
-
-                <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke-width="1.8"
-                    stroke="currentColor"
-                    class="h-5 w-5"
-                >
-
-                    <path
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                        d="M15.75 9V5.25A2.25 2.25 0 0 0 13.5 3h-6A2.25 2.25 0 0 0 5.25 5.25v13.5A2.25 2.25 0 0 0 7.5 21h6a2.25 2.25 0 0 0 2.25-2.25V15"
-                    />
-
-                    <path
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                        d="M18 15.75 21.75 12 18 8.25M21.75 12H9"
-                    />
-
-                </svg>
+                <i class="fas fa-sign-out-alt w-5"></i>
 
                 <span>
                     Logout
@@ -360,71 +438,59 @@
     </aside>
 
 
-    <!-- =========================================
-         MAIN CONTENT AREA
-    ========================================== -->
 
-    <main class="ml-72 min-h-screen flex-1">
+    <!-- ========================================================= -->
+    <!-- MAIN AREA -->
+    <!-- ========================================================= -->
 
-
-        <!-- =====================================
-             TOP HEADER
-        ====================================== -->
-
-        <header
-            class="glass sticky top-0 z-20 flex h-20 items-center justify-between border-b border-white/10 px-8"
-        >
-
-            <!-- USER NAME - TOP LEFT -->
-
-            <div>
-
-                <p class="text-xs font-bold uppercase tracking-[0.2em] text-slate-500">
-                    Welcome
-                </p>
-
-                <h2
-                    id="adminName"
-                    class="mt-1 text-lg font-black text-white"
-                >
-                    Admin
-                </h2>
-
-            </div>
+    <div class="main-area">
 
 
-            <!-- =====================================
-                 ADMIN PROFILE - TOP RIGHT
-            ====================================== -->
+        <!-- HEADER -->
 
-            <div
-                class="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-2.5 backdrop-blur-md"
-            >
+        <header class="dashboard-header px-8">
 
-                <!-- ADMIN ICON -->
+            <div class="h-full flex items-center justify-between">
 
-                <div
-                    class="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-blue-500 to-cyan-400 text-sm font-black text-white shadow-lg shadow-blue-500/30"
-                >
-                    A
+                <div>
+
+                    <h2
+                        id="pageTitle"
+                        class="text-2xl font-bold text-white"
+                    >
+                        Admin Dashboard
+                    </h2>
+
+                    <p
+                        id="pageSubtitle"
+                        class="text-sm text-gray-400 mt-1"
+                    >
+                        Manage BLENCEKART administration
+                    </p>
+
                 </div>
 
 
-                <!-- ADMIN DETAILS -->
+                <div class="text-right">
 
-                <div class="hidden sm:block">
+                    <p class="text-white font-semibold">
 
-                    <p
-                        class="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-500"
-                    >
-                        Administrator
+                        Welcome,
+
+                        <span
+                            id="adminName"
+                            class="text-cyan-400"
+                        >
+                            Admin
+                        </span>
+
                     </p>
 
                     <p
-                        id="adminEmailTop"
-                        class="max-w-[180px] truncate text-sm font-bold text-white"
+                        id="adminEmail"
+                        class="text-sm text-gray-400 mt-1"
                     >
-                        Admin
+                        Loading...
                     </p>
 
                 </div>
@@ -434,76 +500,2884 @@
         </header>
 
 
-        <!-- =====================================
-             DASHBOARD CONTENT
-        ====================================== -->
 
-        <section class="p-8">
+        <!-- CONTENT AREA -->
 
-            <div class="mb-8">
-
-                <h1 class="text-3xl font-black">
-                    Admin Dashboard
-                </h1>
-
-                <p class="mt-2 text-sm text-slate-400">
-                    Manage BLENCEKART administration services.
-                </p>
-
-            </div>
-
-        </section>
-
-    </main>
-
-</div>
+        <main class="content-area">
 
 
-<!-- =========================================
-     LOGOUT JAVASCRIPT
-========================================== -->
+            <!-- DASHBOARD HOME -->
 
-<script>
+            <section id="dashboardHome">
 
-    function logout() {
+                <div class="mb-8">
 
-        // Remove stored admin information
+                    <h3 class="text-3xl font-bold text-white">
+                        Chat History
+                    </h3>
 
-        localStorage.removeItem("admin_id");
+                    <p class="text-gray-400 mt-2">
+                        View users, their conversations and chat history.
+                    </p>
 
-        localStorage.removeItem("admin_email");
-
-
-        // Redirect to main BLENCEKART page
-
-        window.location.href = "/index.html";
-
-    }
+                </div>
 
 
-    // =========================================
-    // DISPLAY ADMIN EMAIL / NAME
-    // =========================================
+                <!-- TOP STATISTICS -->
 
-    const adminEmail =
-        localStorage.getItem("admin_email");
+                <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6 mb-8">
+
+                    <div class="dashboard-card">
+
+                        <div class="flex items-center justify-between">
+
+                            <div>
+
+                                <p class="text-gray-400 text-sm">
+                                    Total Conversations
+                                </p>
+
+                                <h3
+                                    id="totalConversations"
+                                    class="text-3xl font-bold mt-2"
+                                >
+                                    0
+                                </h3>
+
+                            </div>
+
+                            <div class="w-12 h-12 rounded-xl bg-blue-900/40 flex items-center justify-center">
+
+                                <i class="fas fa-comments text-blue-400 text-xl"></i>
+
+                            </div>
+
+                        </div>
+
+                    </div>
 
 
-    if (adminEmail) {
+                    <div class="dashboard-card">
 
-        // Display admin email on the left
+                        <div class="flex items-center justify-between">
 
-        document.getElementById("adminName").textContent =
-            adminEmail;
+                            <div>
 
-        // Display admin email on the top-right profile
+                                <p class="text-gray-400 text-sm">
+                                    Unique Users
+                                </p>
 
-        document.getElementById("adminEmailTop").textContent =
-            adminEmail;
+                                <h3
+                                    id="uniqueUsers"
+                                    class="text-3xl font-bold mt-2"
+                                >
+                                    0
+                                </h3>
 
-    }
+                            </div>
 
-</script>
+                            <div class="w-12 h-12 rounded-xl bg-purple-900/40 flex items-center justify-center">
+
+                                <i class="fas fa-users text-purple-400 text-xl"></i>
+
+                            </div>
+
+                        </div>
+
+                    </div>
+
+
+                    <div class="dashboard-card">
+
+                        <div class="flex items-center justify-between">
+
+                            <div>
+
+                                <p class="text-gray-400 text-sm">
+                                    Messages Today
+                                </p>
+
+                                <h3
+                                    id="messagesToday"
+                                    class="text-3xl font-bold mt-2"
+                                >
+                                    0
+                                </h3>
+
+                            </div>
+
+                            <div class="w-12 h-12 rounded-xl bg-cyan-900/40 flex items-center justify-center">
+
+                                <i class="fas fa-message text-cyan-400 text-xl"></i>
+
+                            </div>
+
+                        </div>
+
+                    </div>
+
+
+                    <div class="dashboard-card">
+
+                        <div class="flex items-center justify-between">
+
+                            <div>
+
+                                <p class="text-gray-400 text-sm">
+                                    Frequent Users
+                                </p>
+
+                                <h3
+                                    id="frequentUsers"
+                                    class="text-3xl font-bold mt-2"
+                                >
+                                    0
+                                </h3>
+
+                            </div>
+
+                            <div class="w-12 h-12 rounded-xl bg-green-900/40 flex items-center justify-center">
+
+                                <i class="fas fa-user-clock text-green-400 text-xl"></i>
+
+                            </div>
+
+                        </div>
+
+                    </div>
+
+                </div>
+
+
+                <!-- USER TYPE CHOICES -->
+
+                <div class="history-toolbar">
+
+                    <button
+                        id="allUsersChoice"
+                        class="history-choice"
+                        onclick="loadUserGroup('all')"
+                    >
+
+                        <i class="fas fa-users mr-2"></i>
+
+                        All Users
+
+                    </button>
+
+
+                    <button
+                        id="activeUsersChoice"
+                        class="history-choice active"
+                        onclick="loadUserGroup('active')"
+                    >
+
+                        <i class="fas fa-user-check mr-2"></i>
+
+                        Active Users
+
+                    </button>
+
+
+                    <button
+                        id="frequentUsersChoice"
+                        class="history-choice"
+                        onclick="loadUserGroup('frequent')"
+                    >
+
+                        <i class="fas fa-chart-line mr-2"></i>
+
+                        Frequent Users
+
+                    </button>
+
+                </div>
+
+
+                <!-- USERS + CONVERSATIONS -->
+
+                <div class="history-layout">
+
+
+                    <!-- USERS -->
+
+                    <div class="user-list-panel">
+
+                        <div class="panel-header">
+
+                            <div>
+
+                                <h3
+                                    class="text-lg font-semibold text-white"
+                                    id="userListTitle"
+                                >
+                                    Active Users
+                                </h3>
+
+                                <p
+                                    class="text-xs text-gray-500 mt-1"
+                                    id="userListSubtitle"
+                                >
+                                    Users active today
+                                </p>
+
+                            </div>
+
+                            <span
+                                id="userListCount"
+                                class="text-xs text-cyan-400"
+                            >
+                                0
+                            </span>
+
+                        </div>
+
+
+                        <div
+                            id="userList"
+                            class="user-list"
+                        >
+
+                            <div class="empty-state">
+
+                                <div>
+
+                                    <i class="fas fa-spinner fa-spin text-cyan-400 text-xl mb-3"></i>
+
+                                    <p>
+                                        Loading users...
+                                    </p>
+
+                                </div>
+
+                            </div>
+
+                        </div>
+
+                    </div>
+
+
+                    <!-- CONVERSATIONS -->
+
+                    <div class="conversation-panel">
+
+                        <div class="panel-header">
+
+                            <div>
+
+                                <h3
+                                    class="text-lg font-semibold text-white"
+                                    id="conversationPanelTitle"
+                                >
+                                    User Conversations
+                                </h3>
+
+                                <p
+                                    class="text-xs text-gray-500 mt-1"
+                                    id="conversationPanelSubtitle"
+                                >
+                                    Select a user to view conversations
+                                </p>
+
+                            </div>
+
+                        </div>
+
+
+                        <div
+                            id="conversationList"
+                            class="conversation-list"
+                        >
+
+                            <div class="empty-state">
+
+                                <div>
+
+                                    <i class="fas fa-comments text-slate-600 text-3xl mb-3"></i>
+
+                                    <p>
+                                        Select a user to view conversations.
+                                    </p>
+
+                                </div>
+
+                            </div>
+
+                        </div>
+
+
+                        <div
+                            id="chatView"
+                            class="chat-view hidden"
+                        ></div>
+
+                    </div>
+
+                </div>
+
+            </section>
+
+
+
+            <!-- RAG DOCUMENTATION -->
+
+            <section
+                id="ragDocumentContainer"
+                class="hidden"
+            >
+
+                <div id="ragDocumentContent">
+
+                    <div class="flex items-center justify-center py-20">
+
+                        <div class="text-center">
+
+                            <i
+                                class="fas fa-spinner fa-spin text-3xl text-cyan-400 mb-4"
+                            ></i>
+
+                            <p class="text-gray-400">
+                                Loading RAG Documentation...
+                            </p>
+
+                        </div>
+
+                    </div>
+
+                </div>
+
+            </section>
+
+
+
+            <!-- FEEDBACK GENERATION -->
+
+            <section
+                id="feedbackContainer"
+                class="hidden"
+            >
+
+                <div class="mb-8">
+
+                    <h3 class="text-3xl font-bold text-white">
+                        Feedback Generation
+                    </h3>
+
+                    <p class="text-gray-400 mt-2">
+                        Generate feedback from user conversations.
+                    </p>
+
+                </div>
+
+
+                <!-- FEEDBACK STATISTICS -->
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+
+
+                    <div class="dashboard-card">
+
+                        <div class="flex items-center justify-between">
+
+                            <div>
+
+                                <p class="text-gray-400 text-sm">
+                                    Generated Feedback
+                                </p>
+
+                                <h3
+                                    id="generatedFeedbackCount"
+                                    class="text-3xl font-bold mt-2"
+                                >
+                                    0
+                                </h3>
+
+                            </div>
+
+                            <div class="w-12 h-12 rounded-xl bg-purple-900/40 flex items-center justify-center">
+
+                                <i class="fas fa-comment-dots text-purple-400 text-xl"></i>
+
+                            </div>
+
+                        </div>
+
+                    </div>
+
+
+                    <div class="dashboard-card">
+
+                        <div class="flex items-center justify-between">
+
+                            <div>
+
+                                <p class="text-gray-400 text-sm">
+                                    Feedback Overview
+                                </p>
+
+                                <h3
+                                    id="feedbackOverviewCount"
+                                    class="text-3xl font-bold mt-2"
+                                >
+                                    0
+                                </h3>
+
+                            </div>
+
+                            <div class="w-12 h-12 rounded-xl bg-cyan-900/40 flex items-center justify-center">
+
+                                <i class="fas fa-list-check text-cyan-400 text-xl"></i>
+
+                            </div>
+
+                        </div>
+
+                    </div>
+
+                </div>
+
+
+                <!-- FEEDBACK FILTER CHOICES -->
+
+                <div class="history-toolbar">
+
+                    <button
+                        id="feedbackAllChoice"
+                        class="feedback-choice active"
+                        onclick="loadFeedbackUsers('all')"
+                    >
+
+                        <i class="fas fa-users mr-2"></i>
+
+                        All Users
+
+                    </button>
+
+
+                    <button
+                        id="feedbackActiveChoice"
+                        class="feedback-choice"
+                        onclick="loadFeedbackUsers('active')"
+                    >
+
+                        <i class="fas fa-user-check mr-2"></i>
+
+                        Active Users
+
+                    </button>
+
+
+                    <button
+                        id="feedbackFrequentChoice"
+                        class="feedback-choice"
+                        onclick="loadFeedbackUsers('frequent')"
+                    >
+
+                        <i class="fas fa-chart-line mr-2"></i>
+
+                        Frequent Users
+
+                    </button>
+
+                </div>
+
+
+                <!-- FEEDBACK USERS + CONVERSATIONS -->
+
+                <div class="feedback-layout">
+
+
+                    <!-- FEEDBACK USERS -->
+
+                    <div class="user-list-panel">
+
+                        <div class="panel-header">
+
+                            <div>
+
+                                <h3 class="text-lg font-semibold text-white">
+                                    Users
+                                </h3>
+
+                                <p class="text-xs text-gray-500 mt-1">
+                                    Select a user to view conversations
+                                </p>
+
+                            </div>
+
+                            <span
+                                id="feedbackUserCount"
+                                class="text-xs text-cyan-400"
+                            >
+                                0
+                            </span>
+
+                        </div>
+
+
+                        <div
+                            id="feedbackUserList"
+                            class="user-list"
+                        >
+
+                            <div class="empty-state">
+
+                                <div>
+
+                                    <i class="fas fa-spinner fa-spin text-cyan-400 text-xl mb-3"></i>
+
+                                    <p>
+                                        Loading users...
+                                    </p>
+
+                                </div>
+
+                            </div>
+
+                        </div>
+
+                    </div>
+
+
+                    <!-- FEEDBACK CONVERSATIONS -->
+
+                    <div class="conversation-panel">
+
+                        <div class="panel-header">
+
+                            <div>
+
+                                <h3
+                                    id="feedbackConversationTitle"
+                                    class="text-lg font-semibold text-white"
+                                >
+                                    User Conversations
+                                </h3>
+
+                                <p
+                                    id="feedbackConversationSubtitle"
+                                    class="text-xs text-gray-500 mt-1"
+                                >
+                                    Select a user to view conversations.
+                                </p>
+
+                            </div>
+
+
+                            <button
+                                id="generateFeedbackButton"
+                                class="primary-btn"
+                                onclick="generateFeedback()"
+                            >
+
+                                <i class="fas fa-wand-magic-sparkles mr-2"></i>
+
+                                Generate Feedback
+
+                            </button>
+
+                        </div>
+
+
+                        <div
+                            id="feedbackConversationList"
+                            class="conversation-list"
+                        >
+
+                            <div class="empty-state">
+
+                                <div>
+
+                                    <i class="fas fa-comments text-slate-600 text-3xl mb-3"></i>
+
+                                    <p>
+                                        Select a user to view their conversations.
+                                    </p>
+
+                                </div>
+
+                            </div>
+
+                        </div>
+
+
+                        <div
+                            id="feedbackChatView"
+                            class="chat-view hidden"
+                        ></div>
+
+                    </div>
+
+                </div>
+
+            </section>
+
+
+        </main>
+
+    </div>
+
+
+
+    <!-- ========================================================= -->
+    <!-- JAVASCRIPT -->
+    <!-- ========================================================= -->
+
+    <script>
+
+
+        /* =========================================================
+           GET ELEMENTS
+        ========================================================= */
+
+        const dashboardHome =
+            document.getElementById("dashboardHome");
+
+        const ragDocumentContainer =
+            document.getElementById("ragDocumentContainer");
+
+        const ragDocumentContent =
+            document.getElementById("ragDocumentContent");
+
+        const feedbackContainer =
+            document.getElementById("feedbackContainer");
+
+        const pageTitle =
+            document.getElementById("pageTitle");
+
+        const pageSubtitle =
+            document.getElementById("pageSubtitle");
+
+        const chatHistoryLink =
+            document.getElementById("chatHistoryLink");
+
+        const ragDocumentationLink =
+            document.getElementById("ragDocumentationLink");
+
+        const feedbackLink =
+            document.getElementById("feedbackLink");
+
+
+        /* =========================================================
+           STATE
+        ========================================================= */
+
+        let currentUserGroup = "active";
+
+        let selectedUserId = null;
+
+        let selectedFeedbackUserId = null;
+
+
+        const userList =
+            document.getElementById("userList");
+
+        const conversationList =
+            document.getElementById("conversationList");
+
+        const chatView =
+            document.getElementById("chatView");
+
+        const feedbackUserList =
+            document.getElementById("feedbackUserList");
+
+        const feedbackConversationList =
+            document.getElementById("feedbackConversationList");
+
+        const feedbackChatView =
+            document.getElementById("feedbackChatView");
+
+
+        /* =========================================================
+           HELPERS
+        ========================================================= */
+
+        function escapeHtml(value) {
+
+            const div =
+                document.createElement("div");
+
+            div.textContent =
+                value ?? "";
+
+            return div.innerHTML;
+
+        }
+
+
+        function getUserId(user) {
+
+            return user.user_id ?? "";
+
+        }
+
+
+        function getUserName(user) {
+
+            return user.name ?? "";
+
+        }
+
+
+        function getConversationId(conversation) {
+
+            return conversation.conversation_id ?? "";
+
+        }
+
+
+        function formatDate(value) {
+
+            if (!value) {
+                return "No date";
+            }
+
+            const date =
+                new Date(value);
+
+            if (Number.isNaN(date.getTime())) {
+                return value;
+            }
+
+            return date.toLocaleString();
+
+        }
+
+
+        function extractArray(data, keys = []) {
+
+            if (Array.isArray(data)) {
+                return data;
+            }
+
+            for (const key of keys) {
+
+                if (Array.isArray(data?.[key])) {
+                    return data[key];
+                }
+
+            }
+
+            if (
+                data?.data &&
+                Array.isArray(data.data)
+            ) {
+                return data.data;
+            }
+
+            return [];
+
+        }
+
+
+        function setChoiceActive(prefix, selected) {
+
+            document
+                .querySelectorAll(`.${prefix}`)
+                .forEach(button => {
+
+                    button.classList.remove("active");
+
+                });
+
+
+            if (selected) {
+                selected.classList.add("active");
+            }
+
+        }
+
+
+        async function fetchJson(
+            url,
+            options = {}
+        ) {
+
+            const response =
+                await fetch(url, options);
+
+
+            if (!response.ok) {
+
+                let message =
+                    `Request failed: ${response.status}`;
+
+
+                try {
+
+                    const errorData =
+                        await response.json();
+
+                    message =
+                        errorData.detail ||
+                        errorData.message ||
+                        message;
+
+                }
+                catch (_) {}
+
+
+                throw new Error(message);
+
+            }
+
+
+            return await response.json();
+
+        }
+
+
+
+        /* =========================================================
+           CHAT HISTORY USERS
+           
+           ALL USERS
+           -> user_access
+
+           ACTIVE USERS
+           -> user_access
+
+           FREQUENT USERS
+           -> user_access + user_conversations
+           -> ordered by conversation count
+        ========================================================= */
+
+        function renderUserList(
+            users,
+            mode = "active"
+        ) {
+
+            userList.innerHTML = "";
+
+
+            document.getElementById(
+                "userListCount"
+            ).textContent =
+                users.length;
+
+
+            document.getElementById(
+                "userListTitle"
+            ).textContent =
+                mode === "all"
+                    ? "All Users"
+                    : mode === "active"
+                        ? "Active Users"
+                        : "Frequent Users";
+
+
+            document.getElementById(
+                "userListSubtitle"
+            ).textContent =
+                mode === "all"
+                    ? "All registered users"
+                    : mode === "active"
+                        ? "Currently active users"
+                        : "Users ordered by total conversations";
+
+
+            if (!users.length) {
+
+                userList.innerHTML = `
+
+                    <div class="empty-state">
+
+                        <div>
+
+                            <i class="fas fa-users text-slate-600 text-3xl mb-3"></i>
+
+                            <p>
+                                No ${
+                                    mode === "all"
+                                        ? "users"
+                                        : mode + " users"
+                                } found.
+                            </p>
+
+                        </div>
+
+                    </div>
+
+                `;
+
+                return;
+
+            }
+
+
+            users.forEach(user => {
+
+                const id =
+                    user.user_id;
+
+
+                const name =
+                    user.name;
+
+
+                const conversationCount =
+                    user.conversation_count ?? 0;
+
+
+                const lastActivity =
+                    user.last_activity ??
+                    user.last_message_at ??
+                    user.last_login;
+
+
+                const button =
+                    document.createElement("button");
+
+
+                button.className =
+                    "user-row";
+
+
+                button.dataset.userId =
+                    id;
+
+
+                button.innerHTML = `
+
+                    <div class="flex items-center justify-between gap-3">
+
+                        <div class="min-w-0">
+
+                            <p class="font-semibold text-white truncate">
+
+                                ${escapeHtml(name)}
+
+                            </p>
+
+                            <p class="text-xs text-gray-500 mt-1">
+
+                                User ID:
+                                ${escapeHtml(String(id))}
+
+                            </p>
+
+                        </div>
+
+
+                        <div class="text-right shrink-0">
+
+                            <p class="text-cyan-400 font-semibold">
+
+                                ${conversationCount}
+
+                            </p>
+
+                            <p class="text-xs text-gray-500">
+
+                                conversations
+
+                            </p>
+
+                        </div>
+
+                    </div>
+
+
+                    ${
+                        lastActivity
+                        ? `
+
+                            <p class="text-xs text-gray-500 mt-3">
+
+                                Last activity:
+                                ${escapeHtml(
+                                    formatDate(lastActivity)
+                                )}
+
+                            </p>
+
+                        `
+                        : ""
+                    }
+
+                `;
+
+
+                button.addEventListener(
+                    "click",
+                    () => {
+
+                        document
+                            .querySelectorAll(
+                                "#userList .user-row"
+                            )
+                            .forEach(item =>
+                                item.classList.remove("active")
+                            );
+
+
+                        button.classList.add("active");
+
+
+                        selectedUserId =
+                            id;
+
+
+                        loadUserConversations(
+                            id
+                        );
+
+                    }
+                );
+
+
+                userList.appendChild(
+                    button
+                );
+
+            });
+
+        }
+
+
+        async function loadUserGroup(
+            mode = "active"
+        ) {
+
+            currentUserGroup =
+                mode;
+
+
+            setChoiceActive(
+                "history-choice",
+                mode === "all"
+                    ? document.getElementById(
+                        "allUsersChoice"
+                    )
+                    : mode === "active"
+                        ? document.getElementById(
+                            "activeUsersChoice"
+                        )
+                        : document.getElementById(
+                            "frequentUsersChoice"
+                        )
+            );
+
+
+            selectedUserId =
+                null;
+
+
+            conversationList.innerHTML = `
+
+                <div class="empty-state">
+
+                    <div>
+
+                        <i class="fas fa-comments text-slate-600 text-3xl mb-3"></i>
+
+                        <p>
+                            Select a user to view conversations.
+                        </p>
+
+                    </div>
+
+                </div>
+
+            `;
+
+
+            chatView.classList.add("hidden");
+
+
+            conversationList.classList.remove("hidden");
+
+
+            userList.innerHTML = `
+
+                <div class="empty-state">
+
+                    <div>
+
+                        <i class="fas fa-spinner fa-spin text-cyan-400 text-xl mb-3"></i>
+
+                        <p>
+                            Loading users...
+                        </p>
+
+                    </div>
+
+                </div>
+
+            `;
+
+
+            try {
+
+                /*
+                 * IMPORTANT:
+                 *
+                 * These are the endpoints from main.py.
+                 */
+
+                const endpoint =
+                    mode === "all"
+                        ? "/api/admin/chat-history/users"
+                        : mode === "active"
+                            ? "/api/admin/chat-history/active-users"
+                            : "/api/admin/chat-history/frequent-users";
+
+
+                const data =
+                    await fetchJson(
+                        endpoint
+                    );
+
+
+                const users =
+                    extractArray(
+                        data,
+                        [
+                            "users",
+                            "all_users",
+                            "active_users",
+                            "frequent_users",
+                            "results"
+                        ]
+                    );
+
+
+                renderUserList(
+                    users,
+                    mode
+                );
+
+            }
+            catch (error) {
+
+                console.error(
+                    `${mode} users error:`,
+                    error
+                );
+
+
+                userList.innerHTML = `
+
+                    <div class="empty-state">
+
+                        <div>
+
+                            <i class="fas fa-triangle-exclamation text-yellow-500 text-2xl mb-3"></i>
+
+                            <p class="text-gray-400">
+
+                                Unable to load users.
+
+                            </p>
+
+                            <p class="text-xs text-gray-600 mt-2">
+
+                                ${escapeHtml(error.message)}
+
+                            </p>
+
+                        </div>
+
+                    </div>
+
+                `;
+
+            }
+
+        }
+
+
+
+        /* =========================================================
+           CHAT HISTORY CONVERSATIONS
+        ========================================================= */
+
+        async function loadUserConversations(
+            userId
+        ) {
+
+            conversationList.classList.remove(
+                "hidden"
+            );
+
+
+            chatView.classList.add(
+                "hidden"
+            );
+
+
+            conversationList.innerHTML = `
+
+                <div class="empty-state">
+
+                    <div>
+
+                        <i class="fas fa-spinner fa-spin text-cyan-400 text-xl mb-3"></i>
+
+                        <p>
+                            Loading conversations...
+                        </p>
+
+                    </div>
+
+                </div>
+
+            `;
+
+
+            try {
+
+                /*
+                 * Conversations are loaded using
+                 * the selected USER ID.
+                 */
+
+                const data =
+                    await fetchJson(
+                        `/api/admin/chat-history/user/${encodeURIComponent(userId)}/conversations`
+                    );
+
+
+                const conversations =
+                    extractArray(
+                        data,
+                        [
+                            "conversations",
+                            "user_conversations",
+                            "results"
+                        ]
+                    );
+
+
+                document.getElementById(
+                    "conversationPanelTitle"
+                ).textContent =
+                    "User Conversations";
+
+
+                document.getElementById(
+                    "conversationPanelSubtitle"
+                ).textContent =
+                    `User ID: ${userId} • ${conversations.length} conversation(s)`;
+
+
+                renderConversations(
+                    conversations,
+                    conversationList,
+                    chatView,
+                    "admin"
+                );
+
+            }
+            catch (error) {
+
+                console.error(
+                    "User conversations error:",
+                    error
+                );
+
+
+                conversationList.innerHTML = `
+
+                    <div class="empty-state">
+
+                        <div>
+
+                            <i class="fas fa-triangle-exclamation text-yellow-500 text-2xl mb-3"></i>
+
+                            <p class="text-gray-400">
+
+                                Unable to load conversations.
+
+                            </p>
+
+                            <p class="text-xs text-gray-600 mt-2">
+
+                                ${escapeHtml(error.message)}
+
+                            </p>
+
+                        </div>
+
+                    </div>
+
+                `;
+
+            }
+
+        }
+
+
+
+        /* =========================================================
+           CONVERSATION RENDERING
+        ========================================================= */
+
+        function renderConversations(
+            conversations,
+            container,
+            chatContainer,
+            source = "admin"
+        ) {
+
+            container.innerHTML = "";
+
+
+            if (!conversations.length) {
+
+                container.innerHTML = `
+
+                    <div class="empty-state">
+
+                        <div>
+
+                            <i class="fas fa-comments text-slate-600 text-3xl mb-3"></i>
+
+                            <p>
+                                No conversations found.
+                            </p>
+
+                        </div>
+
+                    </div>
+
+                `;
+
+                return;
+
+            }
+
+
+            conversations.forEach(
+                conversation => {
+
+                    const id =
+                        getConversationId(
+                            conversation
+                        );
+
+
+                    const title =
+                        conversation.title ??
+                        conversation.name ??
+                        conversation.subject ??
+                        `Conversation ${id}`;
+
+
+                    const lastMessage =
+                        conversation.last_message ??
+                        conversation.last_message_text ??
+                        conversation.preview ??
+                        "";
+
+
+                    const lastMessageAt =
+                        conversation.last_message_at ??
+                        conversation.updated_at ??
+                        conversation.created_at;
+
+
+                    const button =
+                        document.createElement(
+                            "button"
+                        );
+
+
+                    button.className =
+                        "conversation-item";
+
+
+                    button.innerHTML = `
+
+                        <div class="flex items-center justify-between gap-3">
+
+                            <p class="font-semibold text-white truncate">
+
+                                ${escapeHtml(title)}
+
+                            </p>
+
+                            <span class="text-xs text-gray-500 shrink-0">
+
+                                ${escapeHtml(
+                                    formatDate(lastMessageAt)
+                                )}
+
+                            </span>
+
+                        </div>
+
+
+                        <p class="text-sm text-gray-400 mt-2 line-clamp-2">
+
+                            ${escapeHtml(
+                                lastMessage ||
+                                "No preview available"
+                            )}
+
+                        </p>
+
+
+                        <p class="text-xs text-cyan-500 mt-3">
+
+                            Conversation ID:
+                            ${escapeHtml(String(id))}
+
+                        </p>
+
+                    `;
+
+
+                    button.addEventListener(
+                        "click",
+                        async () => {
+
+                            container
+                                .querySelectorAll(
+                                    ".conversation-item"
+                                )
+                                .forEach(item =>
+                                    item.classList.remove(
+                                        "active"
+                                    )
+                                );
+
+
+                            button.classList.add(
+                                "active"
+                            );
+
+
+                            await loadConversationMessages(
+                                id,
+                                chatContainer,
+                                source
+                            );
+
+                        }
+                    );
+
+
+                    container.appendChild(
+                        button
+                    );
+
+                }
+            );
+
+        }
+
+
+
+        /* =========================================================
+           CHAT MESSAGES
+        ========================================================= */
+
+        async function loadConversationMessages(
+            conversationId,
+            chatContainer,
+            source = "admin"
+        ) {
+
+            const listContainer =
+                source === "feedback"
+                    ? feedbackConversationList
+                    : conversationList;
+
+
+            listContainer.classList.add(
+                "hidden"
+            );
+
+
+            chatContainer.classList.remove(
+                "hidden"
+            );
+
+
+            chatContainer.innerHTML = `
+
+                <div class="empty-state">
+
+                    <div>
+
+                        <i class="fas fa-spinner fa-spin text-cyan-400 text-xl mb-3"></i>
+
+                        <p>
+                            Loading chat...
+                        </p>
+
+                    </div>
+
+                </div>
+
+            `;
+
+
+            try {
+
+                const data =
+                    await fetchJson(
+                        `/api/admin/chat-history/conversation/${encodeURIComponent(conversationId)}`
+                    );
+
+
+                const messages =
+                    extractArray(
+                        data,
+                        [
+                            "messages",
+                            "chat",
+                            "conversation",
+                            "results"
+                        ]
+                    );
+
+
+                renderChatMessages(
+                    messages,
+                    chatContainer
+                );
+
+            }
+            catch (error) {
+
+                console.error(
+                    "Conversation messages error:",
+                    error
+                );
+
+
+                chatContainer.innerHTML = `
+
+                    <div class="empty-state">
+
+                        <div>
+
+                            <i class="fas fa-triangle-exclamation text-yellow-500 text-2xl mb-3"></i>
+
+                            <p class="text-gray-400">
+
+                                Unable to load chat messages.
+
+                            </p>
+
+                            <p class="text-xs text-gray-600 mt-2">
+
+                                ${escapeHtml(error.message)}
+
+                            </p>
+
+                        </div>
+
+                    </div>
+
+                `;
+
+            }
+
+        }
+
+
+        function renderChatMessages(
+            messages,
+            container
+        ) {
+
+            container.innerHTML = "";
+
+
+            if (!messages.length) {
+
+                container.innerHTML = `
+
+                    <div class="empty-state">
+
+                        <div>
+
+                            <i class="fas fa-message text-slate-600 text-3xl mb-3"></i>
+
+                            <p>
+                                No messages found for this conversation.
+                            </p>
+
+                        </div>
+
+                    </div>
+
+                `;
+
+                return;
+
+            }
+
+
+            messages.forEach(message => {
+
+                /*
+                 * Your backend returns:
+                 *
+                 * user_message
+                 * ai_response
+                 * message_created_at
+                 */
+
+                const createdAt =
+                    message.message_created_at ??
+                    message.created_at ??
+                    message.timestamp;
+
+
+                if (message.user_message) {
+
+                    const userDiv =
+                        document.createElement("div");
+
+
+                    userDiv.className =
+                        "chat-message user";
+
+
+                    userDiv.innerHTML = `
+
+                        <div class="flex items-center justify-between gap-3 mb-2">
+
+                            <span class="text-sm font-semibold text-blue-400">
+
+                                User
+
+                            </span>
+
+                            <span class="text-xs text-gray-500">
+
+                                ${escapeHtml(
+                                    formatDate(createdAt)
+                                )}
+
+                            </span>
+
+                        </div>
+
+
+                        <p class="text-gray-300 whitespace-pre-wrap">
+
+                            ${escapeHtml(
+                                message.user_message
+                            )}
+
+                        </p>
+
+                    `;
+
+
+                    container.appendChild(
+                        userDiv
+                    );
+
+                }
+
+
+                if (message.ai_response) {
+
+                    const assistantDiv =
+                        document.createElement("div");
+
+
+                    assistantDiv.className =
+                        "chat-message assistant";
+
+
+                    assistantDiv.innerHTML = `
+
+                        <div class="flex items-center justify-between gap-3 mb-2">
+
+                            <span class="text-sm font-semibold text-cyan-400">
+
+                                Assistant
+
+                            </span>
+
+                            <span class="text-xs text-gray-500">
+
+                                ${escapeHtml(
+                                    formatDate(createdAt)
+                                )}
+
+                            </span>
+
+                        </div>
+
+
+                        <p class="text-gray-300 whitespace-pre-wrap">
+
+                            ${escapeHtml(
+                                message.ai_response
+                            )}
+
+                        </p>
+
+                    `;
+
+
+                    container.appendChild(
+                        assistantDiv
+                    );
+
+                }
+
+            });
+
+        }
+
+
+
+        /* =========================================================
+           FEEDBACK USERS
+        ========================================================= */
+
+        async function loadFeedbackUsers(
+            mode = "all"
+        ) {
+
+            const buttons = {
+
+                all:
+                    document.getElementById(
+                        "feedbackAllChoice"
+                    ),
+
+                active:
+                    document.getElementById(
+                        "feedbackActiveChoice"
+                    ),
+
+                frequent:
+                    document.getElementById(
+                        "feedbackFrequentChoice"
+                    )
+
+            };
+
+
+            setChoiceActive(
+                "feedback-choice",
+                buttons[mode]
+            );
+
+
+            feedbackUserList.innerHTML = `
+
+                <div class="empty-state">
+
+                    <div>
+
+                        <i class="fas fa-spinner fa-spin text-cyan-400 text-xl mb-3"></i>
+
+                        <p>
+                            Loading users...
+                        </p>
+
+                    </div>
+
+                </div>
+
+            `;
+
+
+            try {
+
+                /*
+                 * Feedback uses its own endpoints.
+                 */
+
+                const endpoint =
+                    mode === "all"
+                        ? "/api/admin/feedback/users"
+                        : mode === "active"
+                            ? "/api/admin/feedback/active-users"
+                            : "/api/admin/feedback/frequent-users";
+
+
+                const data =
+                    await fetchJson(
+                        endpoint
+                    );
+
+
+                const users =
+                    extractArray(
+                        data,
+                        [
+                            "users",
+                            "all_users",
+                            "active_users",
+                            "frequent_users",
+                            "results"
+                        ]
+                    );
+
+
+                renderFeedbackUserList(
+                    users
+                );
+
+            }
+            catch (error) {
+
+                console.error(
+                    "Feedback users error:",
+                    error
+                );
+
+
+                feedbackUserList.innerHTML = `
+
+                    <div class="empty-state">
+
+                        <div>
+
+                            <i class="fas fa-triangle-exclamation text-yellow-500 text-2xl mb-3"></i>
+
+                            <p class="text-gray-400">
+
+                                Unable to load users.
+
+                            </p>
+
+                            <p class="text-xs text-gray-600 mt-2">
+
+                                ${escapeHtml(error.message)}
+
+                            </p>
+
+                        </div>
+
+                    </div>
+
+                `;
+
+            }
+
+        }
+
+
+
+        function renderFeedbackUserList(
+            users
+        ) {
+
+            feedbackUserList.innerHTML = "";
+
+
+            document.getElementById(
+                "feedbackUserCount"
+            ).textContent =
+                users.length;
+
+
+            if (!users.length) {
+
+                feedbackUserList.innerHTML = `
+
+                    <div class="empty-state">
+
+                        <div>
+
+                            <i class="fas fa-users text-slate-600 text-3xl mb-3"></i>
+
+                            <p>
+                                No users found.
+                            </p>
+
+                        </div>
+
+                    </div>
+
+                `;
+
+                return;
+
+            }
+
+
+            users.forEach(user => {
+
+                const id =
+                    user.user_id;
+
+
+                const name =
+                    user.name;
+
+
+                const conversationCount =
+                    user.conversation_count ?? 0;
+
+
+                const lastActivity =
+                    user.last_activity ??
+                    user.last_message_at ??
+                    user.last_login;
+
+
+                const button =
+                    document.createElement(
+                        "button"
+                    );
+
+
+                button.className =
+                    "user-row";
+
+
+                button.innerHTML = `
+
+                    <div class="flex items-center justify-between gap-3">
+
+                        <div class="min-w-0">
+
+                            <p class="font-semibold text-white truncate">
+
+                                ${escapeHtml(name)}
+
+                            </p>
+
+                            <p class="text-xs text-gray-500 mt-1">
+
+                                User ID:
+                                ${escapeHtml(String(id))}
+
+                            </p>
+
+                        </div>
+
+
+                        <div class="text-right shrink-0">
+
+                            <p class="text-cyan-400 font-semibold">
+
+                                ${conversationCount}
+
+                            </p>
+
+                            <p class="text-xs text-gray-500">
+
+                                conversations
+
+                            </p>
+
+                        </div>
+
+                    </div>
+
+
+                    ${
+                        lastActivity
+                        ? `
+
+                            <p class="text-xs text-gray-500 mt-3">
+
+                                Last activity:
+                                ${escapeHtml(
+                                    formatDate(lastActivity)
+                                )}
+
+                            </p>
+
+                        `
+                        : ""
+                    }
+
+                `;
+
+
+                button.addEventListener(
+                    "click",
+                    () => {
+
+                        document
+                            .querySelectorAll(
+                                "#feedbackUserList .user-row"
+                            )
+                            .forEach(item =>
+                                item.classList.remove(
+                                    "active"
+                                )
+                            );
+
+
+                        button.classList.add(
+                            "active"
+                        );
+
+
+                        selectedFeedbackUserId =
+                            id;
+
+
+                        loadFeedbackUserConversations(
+                            id
+                        );
+
+                    }
+                );
+
+
+                feedbackUserList.appendChild(
+                    button
+                );
+
+            });
+
+        }
+
+
+
+        /* =========================================================
+           FEEDBACK USER CONVERSATIONS
+        ========================================================= */
+
+        async function loadFeedbackUserConversations(
+            userId
+        ) {
+
+            feedbackConversationList
+                .classList
+                .remove("hidden");
+
+
+            feedbackChatView
+                .classList
+                .add("hidden");
+
+
+            feedbackConversationList.innerHTML = `
+
+                <div class="empty-state">
+
+                    <div>
+
+                        <i class="fas fa-spinner fa-spin text-cyan-400 text-xl mb-3"></i>
+
+                        <p>
+                            Loading conversations...
+                        </p>
+
+                    </div>
+
+                </div>
+
+            `;
+
+
+            try {
+
+                const data =
+                    await fetchJson(
+                        `/api/admin/feedback/user/${encodeURIComponent(userId)}/conversations`
+                    );
+
+
+                const conversations =
+                    extractArray(
+                        data,
+                        [
+                            "conversations",
+                            "user_conversations",
+                            "results"
+                        ]
+                    );
+
+
+                document.getElementById(
+                    "feedbackConversationTitle"
+                ).textContent =
+                    "User Conversations";
+
+
+                document.getElementById(
+                    "feedbackConversationSubtitle"
+                ).textContent =
+                    `User ID: ${userId} • ${conversations.length} conversation(s)`;
+
+
+                renderConversations(
+                    conversations,
+                    feedbackConversationList,
+                    feedbackChatView,
+                    "feedback"
+                );
+
+            }
+            catch (error) {
+
+                console.error(
+                    "Feedback conversations error:",
+                    error
+                );
+
+
+                feedbackConversationList.innerHTML = `
+
+                    <div class="empty-state">
+
+                        <div>
+
+                            <i class="fas fa-triangle-exclamation text-yellow-500 text-2xl mb-3"></i>
+
+                            <p class="text-gray-400">
+
+                                Unable to load conversations.
+
+                            </p>
+
+                            <p class="text-xs text-gray-600 mt-2">
+
+                                ${escapeHtml(error.message)}
+
+                            </p>
+
+                        </div>
+
+                    </div>
+
+                `;
+
+            }
+
+        }
+
+
+
+        /* =========================================================
+           GENERATE FEEDBACK
+        ========================================================= */
+
+        async function generateFeedback() {
+
+            const button =
+                document.getElementById(
+                    "generateFeedbackButton"
+                );
+
+
+            const originalText =
+                button.innerHTML;
+
+
+            button.disabled =
+                true;
+
+
+            button.innerHTML = `
+
+                <i class="fas fa-spinner fa-spin mr-2"></i>
+
+                Generating...
+
+            `;
+
+
+            try {
+
+                const payload =
+                    selectedFeedbackUserId
+                        ? {
+                            user_id:
+                                selectedFeedbackUserId
+                        }
+                        : {};
+
+
+                await fetchJson(
+                    "/api/admin/feedback/generate",
+                    {
+                        method: "POST",
+
+                        headers: {
+                            "Content-Type":
+                                "application/json"
+                        },
+
+                        body:
+                            JSON.stringify(payload)
+                    }
+                );
+
+
+                await loadFeedbackStatistics();
+
+
+                alert(
+                    "Feedback generated successfully."
+                );
+
+            }
+            catch (error) {
+
+                console.error(
+                    "Generate feedback error:",
+                    error
+                );
+
+
+                alert(
+                    `Failed to generate feedback: ${error.message}`
+                );
+
+            }
+            finally {
+
+                button.disabled =
+                    false;
+
+
+                button.innerHTML =
+                    originalText;
+
+            }
+
+        }
+
+
+
+        /* =========================================================
+           LOAD FEEDBACK COUNTS
+        ========================================================= */
+
+        async function loadFeedbackStatistics() {
+
+            try {
+
+                const data =
+                    await fetchJson(
+                        "/api/admin/feedback/statistics"
+                    );
+
+
+                document.getElementById(
+                    "generatedFeedbackCount"
+                ).textContent =
+                    data.generated_feedback ??
+                    data.generated_feedback_count ??
+                    data.total_feedback ??
+                    0;
+
+
+                document.getElementById(
+                    "feedbackOverviewCount"
+                ).textContent =
+                    data.feedback_overview ??
+                    data.feedback_overview_count ??
+                    data.total_overview ??
+                    data.generated_feedback ??
+                    data.generated_feedback_count ??
+                    data.total_feedback ??
+                    0;
+
+            }
+            catch (error) {
+
+                console.error(
+                    "Feedback statistics error:",
+                    error
+                );
+
+            }
+
+        }
+
+
+
+        /* =========================================================
+           SIDEBAR ACTIVE
+        ========================================================= */
+
+        function removeActiveSidebar() {
+
+            chatHistoryLink.classList.remove(
+                "active"
+            );
+
+            ragDocumentationLink.classList.remove(
+                "active"
+            );
+
+            feedbackLink.classList.remove(
+                "active"
+            );
+
+        }
+
+
+
+        /* =========================================================
+           SHOW DASHBOARD
+        ========================================================= */
+
+        function showDashboard(event) {
+
+            if (event) {
+                event.preventDefault();
+            }
+
+
+            dashboardHome.classList.remove(
+                "hidden"
+            );
+
+
+            ragDocumentContainer.classList.add(
+                "hidden"
+            );
+
+
+            feedbackContainer.classList.add(
+                "hidden"
+            );
+
+
+            pageTitle.textContent =
+                "Admin Dashboard";
+
+
+            pageSubtitle.textContent =
+                "Manage BLENCEKART administration";
+
+
+            removeActiveSidebar();
+
+
+            chatHistoryLink.classList.add(
+                "active"
+            );
+
+
+            loadUserGroup(
+                "active"
+            );
+
+        }
+
+
+
+        /* =========================================================
+           OPEN RAG DOCUMENTATION
+        ========================================================= */
+
+        async function openRAGDocument(event) {
+
+            if (event) {
+                event.preventDefault();
+            }
+
+
+            dashboardHome.classList.add(
+                "hidden"
+            );
+
+
+            feedbackContainer.classList.add(
+                "hidden"
+            );
+
+
+            ragDocumentContainer.classList.remove(
+                "hidden"
+            );
+
+
+            pageTitle.textContent =
+                "RAG Documentation";
+
+
+            pageSubtitle.textContent =
+                "Manage uploaded RAG documents";
+
+
+            removeActiveSidebar();
+
+
+            ragDocumentationLink.classList.add(
+                "active"
+            );
+
+
+            ragDocumentContent.innerHTML = `
+
+                <div class="flex items-center justify-center py-20">
+
+                    <div class="text-center">
+
+                        <i
+                            class="fas fa-spinner fa-spin text-3xl text-cyan-400 mb-4"
+                        ></i>
+
+                        <p class="text-gray-400">
+
+                            Loading RAG Documentation...
+
+                        </p>
+
+                    </div>
+
+                </div>
+
+            `;
+
+
+            try {
+
+                const response =
+                    await fetch(
+                        "/rag_document.html"
+                    );
+
+
+                if (!response.ok) {
+
+                    throw new Error(
+                        "Unable to load rag_document.html"
+                    );
+
+                }
+
+
+                const html =
+                    await response.text();
+
+
+                const parser =
+                    new DOMParser();
+
+
+                const documentPage =
+                    parser.parseFromString(
+                        html,
+                        "text/html"
+                    );
+
+
+                ragDocumentContent.innerHTML =
+                    documentPage.body.innerHTML;
+
+
+                const stylesheets =
+                    documentPage.querySelectorAll(
+                        'link[rel="stylesheet"]'
+                    );
+
+
+                stylesheets.forEach(link => {
+
+                    const href =
+                        link.getAttribute(
+                            "href"
+                        );
+
+
+                    if (
+                        href &&
+                        !document.querySelector(
+                            `link[href="${href}"]`
+                        )
+                    ) {
+
+                        const newLink =
+                            document.createElement(
+                                "link"
+                            );
+
+
+                        newLink.rel =
+                            "stylesheet";
+
+
+                        newLink.href =
+                            href;
+
+
+                        document.head.appendChild(
+                            newLink
+                        );
+
+                    }
+
+                });
+
+
+                const styleTags =
+                    documentPage.querySelectorAll(
+                        "style"
+                    );
+
+
+                styleTags.forEach(
+                    styleTag => {
+
+                        const newStyle =
+                            document.createElement(
+                                "style"
+                            );
+
+
+                        newStyle.textContent =
+                            styleTag.textContent;
+
+
+                        document.head.appendChild(
+                            newStyle
+                        );
+
+                    }
+                );
+
+
+                const scripts =
+                    documentPage.querySelectorAll(
+                        "script"
+                    );
+
+
+                scripts.forEach(
+                    oldScript => {
+
+                        const newScript =
+                            document.createElement(
+                                "script"
+                            );
+
+
+                        if (oldScript.src) {
+
+                            newScript.src =
+                                oldScript.src;
+
+                        }
+                        else {
+
+                            newScript.textContent =
+                                oldScript.textContent;
+
+                        }
+
+
+                        document.body.appendChild(
+                            newScript
+                        );
+
+                    }
+                );
+
+            }
+            catch (error) {
+
+                console.error(
+                    "RAG Documentation Error:",
+                    error
+                );
+
+
+                ragDocumentContent.innerHTML = `
+
+                    <div
+                        class="bg-red-950/40 border border-red-500/40 rounded-xl p-6"
+                    >
+
+                        <div class="flex items-center gap-3">
+
+                            <i
+                                class="fas fa-circle-exclamation text-red-400 text-xl"
+                            ></i>
+
+                            <h3
+                                class="text-red-400 text-lg font-semibold"
+                            >
+
+                                Failed to Load RAG Documentation
+
+                            </h3>
+
+                        </div>
+
+
+                        <p class="text-gray-400 mt-3">
+
+                            ${escapeHtml(error.message)}
+
+                        </p>
+
+                    </div>
+
+                `;
+
+            }
+
+        }
+
+
+
+        /* =========================================================
+           SHOW FEEDBACK
+        ========================================================= */
+
+        function showFeedback(event) {
+
+            if (event) {
+                event.preventDefault();
+            }
+
+
+            dashboardHome.classList.add(
+                "hidden"
+            );
+
+
+            ragDocumentContainer.classList.add(
+                "hidden"
+            );
+
+
+            feedbackContainer.classList.remove(
+                "hidden"
+            );
+
+
+            pageTitle.textContent =
+                "Feedback Generation";
+
+
+            pageSubtitle.textContent =
+                "Generate and manage user feedback";
+
+
+            removeActiveSidebar();
+
+
+            feedbackLink.classList.add(
+                "active"
+            );
+
+
+            loadFeedbackUsers(
+                "all"
+            );
+
+
+            loadFeedbackStatistics();
+
+        }
+
+
+
+        /* =========================================================
+           LOAD ADMIN DETAILS
+        ========================================================= */
+
+        async function loadAdminDetails() {
+
+            try {
+
+                const response =
+                    await fetch(
+                        "/api/admin/me"
+                    );
+
+
+                if (!response.ok) {
+
+                    throw new Error(
+                        "Unable to get admin details"
+                    );
+
+                }
+
+
+                const data =
+                    await response.json();
+
+
+                if (data.name) {
+
+                    document.getElementById(
+                        "adminName"
+                    ).textContent =
+                        data.name;
+
+                }
+
+
+                if (data.email) {
+
+                    document.getElementById(
+                        "adminEmail"
+                    ).textContent =
+                        data.email;
+
+                }
+
+            }
+            catch (error) {
+
+                console.error(
+                    "Admin details error:",
+                    error
+                );
+
+
+                document.getElementById(
+                    "adminName"
+                ).textContent =
+                    "Admin";
+
+
+                document.getElementById(
+                    "adminEmail"
+                ).textContent =
+                    "";
+
+            }
+
+        }
+
+
+
+        /* =========================================================
+           LOAD ADMIN STATISTICS
+        ========================================================= */
+
+        async function loadStatistics() {
+
+            try {
+
+                const response =
+                    await fetch(
+                        "/api/admin/statistics"
+                    );
+
+
+                if (!response.ok) {
+                    return;
+                }
+
+
+                const data =
+                    await response.json();
+
+
+                document.getElementById(
+                    "totalConversations"
+                ).textContent =
+                    data.total_conversations ??
+                    data.totalConversations ??
+                    0;
+
+
+                document.getElementById(
+                    "uniqueUsers"
+                ).textContent =
+                    data.unique_users ??
+                    data.uniqueUsers ??
+                    0;
+
+
+                document.getElementById(
+                    "messagesToday"
+                ).textContent =
+                    data.messages_today ??
+                    data.messagesToday ??
+                    0;
+
+
+                document.getElementById(
+                    "frequentUsers"
+                ).textContent =
+                    data.frequent_users ??
+                    data.frequentUsers ??
+                    data.frequent_user_count ??
+                    0;
+
+            }
+            catch (error) {
+
+                console.error(
+                    "Statistics error:",
+                    error
+                );
+
+            }
+
+        }
+
+
+
+        /* =========================================================
+           LOGOUT
+        ========================================================= */
+
+        async function logout() {
+
+            try {
+
+                await fetch(
+                    "/api/admin/logout",
+                    {
+                        method: "POST"
+                    }
+                );
+
+            }
+            catch (error) {
+
+                console.error(
+                    "Logout error:",
+                    error
+                );
+
+            }
+
+
+            window.location.href =
+                "/ad_login.html";
+
+        }
+
+
+
+        /* =========================================================
+           PAGE LOAD
+        ========================================================= */
+
+        document.addEventListener(
+            "DOMContentLoaded",
+            function() {
+
+                loadAdminDetails();
+
+                loadStatistics();
+
+
+                if (
+                    window.location.hash ===
+                    "#rag"
+                ) {
+
+                    openRAGDocument();
+
+                }
+                else {
+
+                    loadUserGroup(
+                        "active"
+                    );
+
+                }
+
+            }
+        );
+
+
+    </script>
 
 
 </body>

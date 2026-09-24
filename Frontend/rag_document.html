@@ -1,0 +1,1546 @@
+<!DOCTYPE html>
+
+<html lang="en">
+
+<head>
+
+<meta charset="UTF-8">
+
+<meta
+    name="viewport"
+    content="width=device-width, initial-scale=1.0"
+>
+
+<title>
+    BLENCEKART | RAG Documentation
+</title>
+
+
+<style>
+
+    * {
+        box-sizing: border-box;
+    }
+
+
+    body {
+
+        margin: 0;
+
+        font-family: Arial, sans-serif;
+
+        background:
+            linear-gradient(
+                135deg,
+                #06142F,
+                #071A3D,
+                #0B2454
+            );
+
+        color: #FFFFFF;
+
+        min-height: 100vh;
+
+    }
+
+
+    header {
+
+        padding: 30px 60px;
+
+        border-bottom: 1px solid #1E40AF;
+
+        background:
+            rgba(
+                7,
+                26,
+                61,
+                0.9
+            );
+
+    }
+
+
+    header h1 {
+
+        margin: 0;
+
+        font-size: 30px;
+
+        color: #FFFFFF;
+
+    }
+
+
+    header p {
+
+        margin-top: 8px;
+
+        color: #CBD5E1;
+
+        font-size: 15px;
+
+    }
+
+
+    .container {
+
+        max-width: 1100px;
+
+        margin: 45px auto;
+
+        padding: 0 25px;
+
+    }
+
+
+    .card {
+
+        background:
+            rgba(
+                15,
+                35,
+                75,
+                0.6
+            );
+
+        border: 1px solid #1E40AF;
+
+        border-radius: 14px;
+
+        padding: 30px;
+
+        margin-bottom: 25px;
+
+        box-shadow:
+            0 0 25px
+            rgba(
+                37,
+                99,
+                235,
+                0.15
+            );
+
+    }
+
+
+    .card h2 {
+
+        margin-top: 0;
+
+        color: #FFFFFF;
+
+    }
+
+
+    .description {
+
+        color: #94A3B8;
+
+        margin-bottom: 25px;
+
+    }
+
+
+    .upload-area {
+
+        display: flex;
+
+        align-items: center;
+
+        gap: 15px;
+
+        flex-wrap: wrap;
+
+    }
+
+
+    input[type="file"] {
+
+        background: #071A3D;
+
+        color: #CBD5E1;
+
+        border: 1px solid #1E40AF;
+
+        border-radius: 8px;
+
+        padding: 10px;
+
+    }
+
+
+    button {
+
+        border: none;
+
+        border-radius: 8px;
+
+        padding: 11px 20px;
+
+        font-size: 14px;
+
+        font-weight: bold;
+
+        cursor: pointer;
+
+        color: #FFFFFF;
+
+    }
+
+
+    .upload-button {
+
+        background:
+            linear-gradient(
+                90deg,
+                #2563EB,
+                #06B6D4
+            );
+
+    }
+
+
+    .view-button {
+
+        background:
+            linear-gradient(
+                90deg,
+                #06B6D4,
+                #4F46E5
+            );
+
+        margin-top: 20px;
+
+    }
+
+
+    button:hover {
+
+        opacity: 0.9;
+
+    }
+
+
+    #uploadMessage {
+
+        margin-top: 15px;
+
+        color: #CBD5E1;
+
+    }
+
+
+    .documents-section {
+
+        display: none;
+
+    }
+
+
+    .table-container {
+
+        overflow-x: auto;
+
+    }
+
+
+    table {
+
+        width: 100%;
+
+        min-width: 1200px;
+
+        border-collapse: collapse;
+
+        margin-top: 20px;
+
+    }
+
+
+    th {
+
+        background: #071A3D;
+
+        color: #06B6D4;
+
+        padding: 14px;
+
+        text-align: left;
+
+        border-bottom: 1px solid #1E40AF;
+
+        white-space: nowrap;
+
+    }
+
+
+    td {
+
+        padding: 14px;
+
+        border-bottom: 1px solid #1E40AF;
+
+        color: #CBD5E1;
+
+        white-space: nowrap;
+
+    }
+
+
+    tr:hover {
+
+        background:
+            rgba(
+                37,
+                99,
+                235,
+                0.08
+            );
+
+    }
+
+
+    a {
+
+        color: #06B6D4;
+
+        text-decoration: none;
+
+        font-weight: bold;
+
+    }
+
+
+    a:hover {
+
+        color: #2563EB;
+
+    }
+
+
+    .active-status {
+
+        color: #06B6D4;
+
+        font-weight: bold;
+
+    }
+
+
+    .removed-status {
+
+        color: #94A3B8;
+
+        font-weight: bold;
+
+    }
+
+
+    .remove-button {
+
+        background: #071A3D;
+
+        border: 1px solid #2563EB;
+
+    }
+
+
+    .delete-button {
+
+        background: #071A3D;
+
+        border: 1px solid #06B6D4;
+
+    }
+
+
+    .no-data {
+
+        text-align: center;
+
+        padding: 35px;
+
+        color: #94A3B8;
+
+        font-size: 16px;
+
+    }
+
+
+    .loading {
+
+        text-align: center;
+
+        padding: 35px;
+
+        color: #CBD5E1;
+
+    }
+
+</style>
+
+
+</head>
+
+<body>
+
+
+<!-- =========================================
+     HEADER
+========================================== -->
+
+
+
+
+<!-- =========================================
+     MAIN CONTAINER
+========================================== -->
+
+<div class="container">
+
+
+    <!-- =====================================
+         UPLOAD CARD
+    ====================================== -->
+
+    <div class="card">
+
+        <h2>
+            Upload Document
+        </h2>
+
+        <p class="description">
+
+            Upload a PDF document to add it to the RAG knowledge base.
+
+        </p>
+
+
+        <form id="uploadForm">
+
+            <div class="upload-area">
+
+
+                <!-- Choose PDF File -->
+
+                <input
+                    type="file"
+                    id="documentFile"
+                    accept=".pdf,application/pdf"
+                >
+
+
+                <!-- Upload Button -->
+
+                <button
+                    type="submit"
+                    class="upload-button"
+                >
+
+                    Upload Document
+
+                </button>
+
+            </div>
+
+        </form>
+
+
+        <p id="uploadMessage"></p>
+
+    </div>
+
+
+    <!-- =====================================
+         VIEW DOCUMENT BUTTON
+    ====================================== -->
+
+    <div class="card">
+
+        <h2>
+            Document Library
+        </h2>
+
+        <p class="description">
+
+            Click the button below to view the documents stored in the database.
+
+        </p>
+
+
+        <button
+            type="button"
+            class="view-button"
+            onclick="viewDocuments()"
+        >
+
+            View Documents
+
+        </button>
+
+    </div>
+
+
+    <!-- =====================================
+         DOCUMENTS SECTION
+
+         HIDDEN INITIALLY
+
+         It appears only after clicking
+         View Documents
+    ====================================== -->
+
+    <div
+        class="card documents-section"
+        id="documentsSection"
+    >
+
+        <h2>
+            Stored Documents
+        </h2>
+
+
+        <div class="table-container">
+
+
+            <table>
+
+                <thead>
+
+                    <tr>
+
+                        <!-- Database ID -->
+
+                        <th>
+                            Document ID
+                        </th>
+
+
+                        <!-- PDF Name -->
+
+                        <th>
+                            Document Name
+                        </th>
+
+
+                        <!-- PDF Link -->
+
+                        <th>
+                            Link
+                        </th>
+
+
+                        <!-- Admin Name -->
+
+                        <th>
+                            Created By
+                        </th>
+
+
+                        <!-- Admin ID -->
+
+                        <th>
+                            Admin ID
+                        </th>
+
+
+                        <!-- Created Time -->
+
+                        <th>
+                            Created At
+                        </th>
+
+
+                        <!-- Updated Time -->
+
+                        <th>
+                            Last Updated
+                        </th>
+
+
+                        <!-- File Size -->
+
+                        <th>
+                            Size
+                        </th>
+
+
+                        <!-- MIME Type -->
+
+                        <th>
+                            MIME Type
+                        </th>
+
+
+                        <!-- Status -->
+
+                        <th>
+                            Status
+                        </th>
+
+
+                        <!-- Remove / Delete -->
+
+                        <th>
+                            Remove / Unremove
+                        </th>
+
+                    </tr>
+
+                </thead>
+
+
+                <tbody id="documentTableBody">
+
+                </tbody>
+
+            </table>
+
+
+        </div>
+
+    </div>
+
+
+</div>
+
+
+<!-- =========================================
+     JAVASCRIPT
+========================================== -->
+
+<script>
+
+
+    // =========================================
+    // UPLOAD DOCUMENT
+    // =========================================
+
+    document.getElementById(
+        "uploadForm"
+    ).addEventListener(
+        "submit",
+        async function(event) {
+
+
+            // Stop normal form submission
+
+            event.preventDefault();
+
+
+            // Get file input
+
+            const fileInput =
+                document.getElementById(
+                    "documentFile"
+                );
+
+
+            // Get message area
+
+            const message =
+                document.getElementById(
+                    "uploadMessage"
+                );
+
+
+            // =================================
+            // CHECK FILE
+            // =================================
+
+            if (!fileInput.files.length) {
+
+                alert(
+                    "Please choose a PDF file first."
+                );
+
+                return;
+
+            }
+
+
+            // Get selected file
+
+            const file =
+                fileInput.files[0];
+
+
+            // =================================
+            // CHECK PDF
+            // =================================
+
+            if (
+                file.type !== "application/pdf"
+                &&
+                !file.name
+                    .toLowerCase()
+                    .endsWith(".pdf")
+            ) {
+
+                alert(
+                    "Only PDF files are allowed."
+                );
+
+                return;
+
+            }
+
+
+            // =================================
+            // CONFIRM UPLOAD
+            // =================================
+
+            const confirmation =
+                confirm(
+                    "Do you want to upload this document?"
+                );
+
+
+            if (!confirmation) {
+
+                return;
+
+            }
+
+
+            // =================================
+            // GET ADMIN ID
+            // =================================
+
+            const adminId =
+                localStorage.getItem(
+                    "admin_id"
+                );
+
+
+            if (!adminId) {
+
+                alert(
+                    "Admin login information not found. Please login again."
+                );
+
+                return;
+
+            }
+
+
+            // =================================
+            // CREATE FORM DATA
+            // =================================
+
+            const formData =
+                new FormData();
+
+
+            formData.append(
+                "file",
+                file
+            );
+
+
+            formData.append(
+                "admin_id",
+                adminId
+            );
+
+
+            try {
+
+
+                // Show uploading message
+
+                message.textContent =
+                    "Uploading document...";
+
+
+                // =================================
+                // SEND PDF TO BACKEND
+                // =================================
+
+                const response =
+                    await fetch(
+                        "/api/documents/upload",
+                        {
+                            method: "POST",
+                            body: formData
+                        }
+                    );
+
+
+                // Convert response to JSON
+
+                const data =
+                    await response.json();
+
+
+                // =================================
+                // CHECK UPLOAD ERROR
+                // =================================
+
+                if (!response.ok) {
+
+                    alert(
+                        data.detail ||
+                        "Upload failed."
+                    );
+
+                    message.textContent =
+                        "Upload failed.";
+
+                    return;
+
+                }
+
+
+                // =================================
+                // UPLOAD SUCCESS
+                // =================================
+
+                alert(
+                    "Document uploaded successfully."
+                );
+
+
+                message.textContent =
+                    "Document uploaded successfully.";
+
+
+                // Clear selected file
+
+                fileInput.value = "";
+
+
+                /*
+                IMPORTANT:
+
+                We DO NOT call viewDocuments()
+                here.
+
+                Therefore the document table
+                will NOT automatically appear.
+
+                The user must click
+                "View Documents".
+                */
+
+            }
+
+
+            catch (error) {
+
+                console.error(error);
+
+
+                alert(
+                    "Unable to upload document."
+                );
+
+
+                message.textContent =
+                    "Upload failed.";
+
+            }
+
+        }
+    );
+
+
+    // =========================================
+    // VIEW DOCUMENTS
+    // =========================================
+
+    async function viewDocuments() {
+
+
+        // Get document section
+
+        const documentsSection =
+            document.getElementById(
+                "documentsSection"
+            );
+
+
+        // Get table body
+
+        const tableBody =
+            document.getElementById(
+                "documentTableBody"
+            );
+
+
+        // =================================
+        // SHOW DOCUMENT SECTION
+        // =================================
+
+        documentsSection.style.display =
+            "block";
+
+
+        // =================================
+        // SHOW LOADING
+        // =================================
+
+        tableBody.innerHTML = `
+
+            <tr>
+
+                <td
+                    colspan="11"
+                    class="loading"
+                >
+
+                    Loading documents...
+
+                </td>
+
+            </tr>
+
+        `;
+
+
+        try {
+
+
+            // =================================
+            // GET DATA FROM FASTAPI
+            // =================================
+
+            const response =
+                await fetch(
+                    "/api/documents"
+                );
+
+
+            // Check response
+
+            if (!response.ok) {
+
+                throw new Error(
+                    "Failed to load documents"
+                );
+
+            }
+
+
+            // Convert JSON response
+
+            const documents =
+                await response.json();
+
+
+            // =================================
+            // DISPLAY DOCUMENTS
+            // =================================
+
+            displayDocuments(
+                documents
+            );
+
+        }
+
+
+        catch (error) {
+
+            console.error(error);
+
+
+            tableBody.innerHTML = `
+
+                <tr>
+
+                    <td
+                        colspan="11"
+                        class="no-data"
+                    >
+
+                        Failed to load documents.
+
+                    </td>
+
+                </tr>
+
+            `;
+
+        }
+
+    }
+
+
+    // =========================================
+    // DISPLAY DOCUMENTS
+    // =========================================
+
+    function displayDocuments(documents) {
+
+
+        // Get table body
+
+        const tableBody =
+            document.getElementById(
+                "documentTableBody"
+            );
+
+
+        // Clear existing rows
+
+        tableBody.innerHTML = "";
+
+
+        // =================================
+        // NO DATA
+        // =================================
+
+        if (
+            !documents
+            ||
+            documents.length === 0
+        ) {
+
+            tableBody.innerHTML = `
+
+                <tr>
+
+                    <td
+                        colspan="11"
+                        class="no-data"
+                    >
+
+                        No Data Found
+
+                    </td>
+
+                </tr>
+
+            `;
+
+            return;
+
+        }
+
+
+        // =================================
+        // LOOP THROUGH DATABASE RECORDS
+        // =================================
+
+        documents.forEach(
+            function(doc) {
+
+
+                // =================================
+                // CREATE TABLE ROW
+                // =================================
+
+                const row =
+                    document.createElement(
+                        "tr"
+                    );
+
+
+                // =================================
+                // FILE SIZE
+                // =================================
+
+                const size =
+                    formatFileSize(
+                        doc.file_size
+                    );
+
+
+                // =================================
+                // CREATED AT
+                // =================================
+
+                const created =
+                    doc.created_at
+                    ? new Date(
+                        doc.created_at
+                    ).toLocaleString()
+                    : "N/A";
+
+
+                // =================================
+                // LAST UPDATED
+                // =================================
+
+                const updated =
+                    doc.last_updated
+                    ? new Date(
+                        doc.last_updated
+                    ).toLocaleString()
+                    : "N/A";
+
+
+                // =================================
+                // STATUS
+                // =================================
+
+                const status =
+                    doc.is_removed
+
+                    ? `<span class="removed-status">
+                        Removed
+                       </span>`
+
+                    : `<span class="active-status">
+                        Active
+                       </span>`;
+
+
+                // =================================
+                // ACTION BUTTON
+                // =================================
+
+                let actionButton;
+
+
+                if (doc.is_removed) {
+
+
+                    // Removed document
+
+                    actionButton = `
+
+                        <button
+                            class="delete-button"
+                            onclick="permanentDelete(${doc.document_id})"
+                        >
+
+                            Unremove
+
+                        </button>
+
+                    `;
+
+                }
+
+
+                else {
+
+
+                    // Active document
+
+                    actionButton = `
+
+                        <button
+                            class="remove-button"
+                            onclick="removeDocument(${doc.document_id})"
+                        >
+
+                            Remove
+
+                        </button>
+
+                    `;
+
+                }
+
+
+                // =================================
+                // CREATE HTML ROW
+                // =================================
+
+                row.innerHTML = `
+
+
+                    <!-- DOCUMENT ID -->
+
+                    <td>
+
+                        ${doc.document_id}
+
+                    </td>
+
+
+                    <!-- DOCUMENT NAME -->
+
+                    <td>
+
+                        ${escapeHtml(
+                            doc.document_name
+                        )}
+
+                    </td>
+
+
+                    <!-- DOCUMENT LINK -->
+
+                    <td>
+
+                        <a
+                            href="/api/documents/${doc.document_id}/file"
+                            target="_blank"
+                        >
+
+                            Open Document
+
+                        </a>
+
+                    </td>
+
+
+                    <!-- CREATED BY -->
+
+                    <td>
+
+                        ${escapeHtml(
+                            doc.created_by
+                        )}
+
+                    </td>
+
+
+                    <!-- ADMIN ID -->
+
+                    <td>
+
+                        ${doc.admin_id}
+
+                    </td>
+
+
+                    <!-- CREATED AT -->
+
+                    <td>
+
+                        ${created}
+
+                    </td>
+
+
+                    <!-- LAST UPDATED -->
+
+                    <td>
+
+                        ${updated}
+
+                    </td>
+
+
+                    <!-- FILE SIZE -->
+
+                    <td>
+
+                        ${size}
+
+                    </td>
+
+
+                    <!-- MIME TYPE -->
+
+                    <td>
+
+                        ${escapeHtml(
+                            doc.mime_type
+                        )}
+
+                    </td>
+
+
+                    <!-- STATUS -->
+
+                    <td>
+
+                        ${status}
+
+                    </td>
+
+
+                    <!-- REMOVE / UNREMOVE -->
+
+                    <td>
+
+                        ${actionButton}
+
+                    </td>
+
+                `;
+
+
+                // Add row to table
+
+                tableBody.appendChild(
+                    row
+                );
+
+            }
+        );
+
+    }
+
+
+    // =========================================
+    // REMOVE DOCUMENT
+    // =========================================
+
+    async function removeDocument(
+        documentId
+    ) {
+
+
+        // Ask confirmation
+
+        const confirmation =
+            confirm(
+                "Do you really want to remove this document?"
+            );
+
+
+        if (!confirmation) {
+
+            return;
+
+        }
+
+
+        try {
+
+
+            // Send remove request
+
+            const response =
+                await fetch(
+                    `/api/documents/${documentId}/remove`,
+                    {
+                        method: "PUT"
+                    }
+                );
+
+
+            // Convert response
+
+            const data =
+                await response.json();
+
+
+            // Check response
+
+            if (!response.ok) {
+
+                alert(
+                    data.detail ||
+                    "Failed to remove document."
+                );
+
+                return;
+
+            }
+
+
+            // Show success
+
+            alert(
+                "Document removed successfully."
+            );
+
+
+            // Refresh because
+            // document section is already open
+
+            viewDocuments();
+
+        }
+
+
+        catch (error) {
+
+            console.error(error);
+
+
+            alert(
+                "Failed to remove document."
+            );
+
+        }
+
+    }
+
+
+    // =========================================
+    // PERMANENT DELETE
+    // =========================================
+
+    async function permanentDelete(
+        documentId
+    ) {
+
+
+        // Ask confirmation
+
+        const confirmation =
+            confirm(
+                "Do you really want to permanently delete this document from the database?"
+            );
+
+
+        if (!confirmation) {
+
+            return;
+
+        }
+
+
+        try {
+
+
+            // Send delete request
+
+            const response =
+                await fetch(
+                    `/api/documents/${documentId}/permanent`,
+                    {
+                        method: "DELETE"
+                    }
+                );
+
+
+            // Convert response
+
+            const data =
+                await response.json();
+
+
+            // Check response
+
+            if (!response.ok) {
+
+                alert(
+                    data.detail ||
+                    "Failed to permanently delete document."
+                );
+
+                return;
+
+            }
+
+
+            // Show success
+
+            alert(
+                "Document permanently deleted from the database."
+            );
+
+
+            // Refresh document list
+
+            viewDocuments();
+
+        }
+
+
+        catch (error) {
+
+            console.error(error);
+
+
+            alert(
+                "Failed to permanently delete document."
+            );
+
+        }
+
+    }
+
+
+    // =========================================
+    // FILE SIZE
+    // =========================================
+
+    function formatFileSize(bytes) {
+
+
+        if (
+            bytes === null
+            ||
+            bytes === undefined
+        ) {
+
+            return "N/A";
+
+        }
+
+
+        if (bytes < 1024) {
+
+            return (
+                bytes +
+                " Bytes"
+            );
+
+        }
+
+
+        if (
+            bytes <
+            1024 * 1024
+        ) {
+
+            return (
+
+                (
+                    bytes / 1024
+                ).toFixed(2)
+
+                +
+                " KB"
+
+            );
+
+        }
+
+
+        return (
+
+            (
+                bytes /
+                (1024 * 1024)
+            ).toFixed(2)
+
+            +
+            " MB"
+
+        );
+
+    }
+
+
+    // =========================================
+    // HTML ESCAPE
+    // =========================================
+
+    function escapeHtml(value) {
+
+        return String(value)
+
+            .replace(
+                /&/g,
+                "&amp;"
+            )
+
+            .replace(
+                /</g,
+                "&lt;"
+            )
+
+            .replace(
+                />/g,
+                "&gt;"
+            )
+
+            .replace(
+                /"/g,
+                "&quot;"
+            )
+
+            .replace(
+                /'/g,
+                "&#039;"
+            );
+
+    }
+
+</script>
+
+</body>
+
+</html>
