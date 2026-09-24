@@ -1,1 +1,2414 @@
-hi
+
+
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>BLENCEKART | Smart Eyewear</title>
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+
+                    fontFamily: {
+                        sans: ["Inter", "Arial", "sans-serif"]
+                    },
+
+                    animation: {
+                        float: "float 6s ease-in-out infinite",
+                        "float-slow": "float 10s ease-in-out infinite",
+                        "pulse-glow": "pulseGlow 3s ease-in-out infinite",
+                        gradient: "gradientMove 8s ease infinite",
+                        "spin-slow": "spin 18s linear infinite"
+                    },
+
+                    keyframes: {
+
+                        float: {
+                            "0%, 100%": {
+                                transform: "translateY(0px)"
+                            },
+                            "50%": {
+                                transform: "translateY(-20px)"
+                            }
+                        },
+
+                        pulseGlow: {
+                            "0%, 100%": {
+                                opacity: "0.3",
+                                transform: "scale(1)"
+                            },
+                            "50%": {
+                                opacity: "0.7",
+                                transform: "scale(1.15)"
+                            }
+                        },
+
+                        gradientMove: {
+                            "0%, 100%": {
+                                backgroundPosition: "0% 50%"
+                            },
+                            "50%": {
+                                backgroundPosition: "100% 50%"
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+
+        html {
+            scroll-behavior: smooth;
+        }
+
+        body {
+            margin: 0;
+            overflow-x: hidden;
+            background: #020617;
+        }
+
+        /* =====================================================
+           GLOBAL BLUE WORLD
+        ====================================================== */
+
+        .blue-world {
+
+            background:
+
+                radial-gradient(
+                    circle at 10% 10%,
+                    rgba(37, 99, 235, 0.25),
+                    transparent 30%
+                ),
+
+                radial-gradient(
+                    circle at 90% 20%,
+                    rgba(6, 182, 212, 0.18),
+                    transparent 30%
+                ),
+
+                radial-gradient(
+                    circle at 50% 80%,
+                    rgba(99, 102, 241, 0.18),
+                    transparent 35%
+                ),
+
+                #020617;
+        }
+
+        /* =====================================================
+           GLASS EFFECT
+        ====================================================== */
+
+        .glass {
+
+            background: rgba(255, 255, 255, 0.055);
+
+            border: 1px solid rgba(255, 255, 255, 0.1);
+
+            backdrop-filter: blur(18px);
+
+            -webkit-backdrop-filter: blur(18px);
+        }
+
+        /* =====================================================
+           SECTION BACKGROUND
+        ====================================================== */
+
+        .section-gradient {
+
+            background:
+
+                radial-gradient(
+                    circle at 20% 20%,
+                    rgba(37, 99, 235, 0.16),
+                    transparent 32%
+                ),
+
+                radial-gradient(
+                    circle at 80% 60%,
+                    rgba(14, 165, 233, 0.12),
+                    transparent 30%
+                ),
+
+                radial-gradient(
+                    circle at 50% 100%,
+                    rgba(79, 70, 229, 0.16),
+                    transparent 35%
+                ),
+
+                #020617;
+
+            position: relative;
+            z-index: 10;
+        }
+
+        /* =====================================================
+           BLUE GRADIENT TEXT
+        ====================================================== */
+
+        .blue-text {
+
+            background:
+
+                linear-gradient(
+                    90deg,
+                    #60a5fa,
+                    #22d3ee,
+                    #818cf8,
+                    #60a5fa
+                );
+
+            background-size: 250% auto;
+
+            -webkit-background-clip: text;
+
+            background-clip: text;
+
+            color: transparent;
+
+            animation: gradientMove 7s ease infinite;
+        }
+
+        /* =====================================================
+           SCROLL REVEAL
+        ====================================================== */
+
+        .scroll-reveal {
+
+            opacity: 0;
+
+            transform: translateY(60px);
+
+            transition:
+                opacity 0.9s ease,
+                transform 0.9s cubic-bezier(.2,.8,.2,1);
+        }
+
+        .scroll-reveal.show {
+
+            opacity: 1;
+
+            transform: translateY(0);
+        }
+
+        /* =====================================================
+           CARD HOVER
+        ====================================================== */
+
+        .glow-card {
+
+            transition:
+                transform 0.5s ease,
+                border-color 0.5s ease,
+                box-shadow 0.5s ease;
+        }
+
+        .glow-card:hover {
+
+            transform:
+                translateY(-10px)
+                scale(1.015);
+
+            border-color:
+                rgba(59, 130, 246, 0.6);
+
+            box-shadow:
+
+                0 20px 70px
+                rgba(37, 99, 235, 0.18),
+
+                0 0 40px
+                rgba(14, 165, 233, 0.08);
+        }
+
+        /* =====================================================
+           HERO IMAGE
+        ====================================================== */
+
+        .hero-image {
+
+            transform: scale(1.05);
+
+            transition:
+                transform 0.15s linear;
+        }
+
+        /* =====================================================
+           REAL MODEL IMAGES
+        ====================================================== */
+
+        .model-image {
+
+            width: 100%;
+
+            height: 100%;
+
+            object-fit: cover;
+
+            object-position: center;
+
+            transition:
+                transform 1s cubic-bezier(.2,.8,.2,1),
+                filter 0.7s ease;
+        }
+
+        .model-frame {
+
+            position: relative;
+
+            overflow: hidden;
+
+            border-radius: 2rem;
+
+            background:
+                linear-gradient(
+                    135deg,
+                    rgba(37,99,235,0.25),
+                    rgba(6,182,212,0.15),
+                    rgba(99,102,241,0.20)
+                );
+
+            box-shadow:
+                0 30px 100px rgba(0,0,0,0.35);
+        }
+
+        .model-frame:hover .model-image {
+
+            transform: scale(1.06);
+        }
+
+        .model-overlay {
+
+            position: absolute;
+
+            inset: 0;
+
+            background:
+                linear-gradient(
+                    180deg,
+                    transparent 45%,
+                    rgba(2,6,23,0.45) 100%
+                );
+
+            pointer-events: none;
+        }
+
+        /* =====================================================
+           IMAGE SHINE
+        ====================================================== */
+
+        .image-shine {
+
+            position: absolute;
+
+            inset: 0;
+
+            background:
+                linear-gradient(
+                    110deg,
+                    transparent 20%,
+                    rgba(255,255,255,0.12) 45%,
+                    transparent 70%
+                );
+
+            transform:
+                translateX(-120%);
+
+            transition:
+                transform 1s ease;
+
+            pointer-events: none;
+        }
+
+        .model-frame:hover .image-shine {
+
+            transform:
+                translateX(120%);
+        }
+
+        /* =====================================================
+           PARALLAX
+        ====================================================== */
+
+        .parallax {
+
+            will-change: transform;
+        }
+
+        /* =====================================================
+           GLOW LINE
+        ====================================================== */
+
+        .line-glow {
+
+            box-shadow:
+                0 0 15px
+                rgba(59, 130, 246, 0.7);
+        }
+
+        /* =====================================================
+           NAVIGATION TARGET
+        ====================================================== */
+
+        section[id] {
+
+            scroll-margin-top: 90px;
+        }
+
+        /* =====================================================
+           CATEGORY DESTINATION
+        ====================================================== */
+
+        .category-destination {
+
+            position: relative;
+
+            overflow: hidden;
+
+            isolation: isolate;
+
+            background-color: #020617;
+        }
+
+        .category-destination::before {
+
+            content: "";
+
+            position: absolute;
+
+            width: 350px;
+
+            height: 350px;
+
+            border-radius: 999px;
+
+            background:
+                rgba(37, 99, 235, 0.12);
+
+            filter: blur(90px);
+
+            top: -150px;
+
+            right: -100px;
+
+            pointer-events: none;
+
+            z-index: -1;
+        }
+
+        /* =====================================================
+           IMAGE BADGE
+        ====================================================== */
+
+        .image-badge {
+
+            position: absolute;
+
+            left: 22px;
+
+            bottom: 22px;
+
+            z-index: 5;
+
+            border:
+                1px solid rgba(255,255,255,0.15);
+
+            background:
+                rgba(2,6,23,0.65);
+
+            backdrop-filter:
+                blur(15px);
+
+            padding:
+                10px 16px;
+
+            border-radius:
+                999px;
+
+            font-size:
+                11px;
+
+            font-weight:
+                900;
+
+            letter-spacing:
+                0.15em;
+
+            color:
+                #bfdbfe;
+        }
+
+        /* =====================================================
+           CUSTOM SCROLLBAR
+        ====================================================== */
+
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: #020617;
+        }
+
+        ::-webkit-scrollbar-thumb {
+
+            background:
+
+                linear-gradient(
+                    #2563eb,
+                    #06b6d4
+                );
+
+            border-radius: 20px;
+        }
+
+        /* =====================================================
+           SELECTION
+        ====================================================== */
+
+        ::selection {
+
+            background:
+                rgba(37, 99, 235, 0.5);
+
+            color: white;
+        }
+
+    </style>
+
+</head>
+
+<body class="blue-world font-sans text-white">
+
+<!-- =====================================================
+     NAVBAR
+====================================================== -->
+
+<header
+    class="sticky top-0 z-[100] border-b border-white/10 bg-slate-950/75 backdrop-blur-xl"
+>
+
+    <div
+        class="mx-auto flex h-20 max-w-7xl items-center justify-between px-5"
+    >
+
+        <a
+            href="#home"
+            class="flex items-center gap-3"
+        >
+
+            <div
+                class="flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 to-cyan-400 text-xl font-black text-white shadow-lg shadow-blue-500/30"
+            >
+                B
+            </div>
+
+            <div>
+
+                <div
+                    class="text-xl font-black tracking-tight text-white"
+                >
+                    BLENCE<span class="text-blue-400">KART</span>
+                </div>
+
+                <div
+                    class="text-[9px] font-bold uppercase tracking-[0.3em] text-slate-400"
+                >
+                    Smart Eyewear
+                </div>
+
+            </div>
+
+        </a>
+
+        <nav class="hidden items-center gap-7 lg:flex">
+
+            <a href="#eyeglasses"
+                class="text-sm font-semibold text-slate-300 transition hover:text-blue-400">
+                Eyeglasses
+            </a>
+
+            <a href="#sunglasses"
+                class="text-sm font-semibold text-slate-300 transition hover:text-blue-400">
+                Sunglasses
+            </a>
+
+            <a href="#contact"
+                class="text-sm font-semibold text-slate-300 transition hover:text-blue-400">
+                Contact Lenses
+            </a>
+
+            <a href="#power"
+                class="text-sm font-semibold text-slate-300 transition hover:text-blue-400">
+                Special Power
+            </a>
+
+            <a href="#stores"
+                class="text-sm font-semibold text-slate-300 transition hover:text-blue-400">
+                Stores
+            </a>
+
+            <a href="#try"
+                class="text-sm font-semibold text-slate-300 transition hover:text-blue-400">
+                Try at Home
+            </a>
+
+        </nav>
+
+        <!-- Admin redirect -->
+        <a
+            href="ad_login.html"
+            class="rounded-full border border-blue-400/30 bg-blue-500/10 px-5 py-2.5 text-sm font-bold text-blue-300 shadow-sm transition hover:border-blue-300 hover:bg-blue-500/20"
+        >
+            Admin
+        </a>
+
+    </div>
+
+</header>
+
+
+<!-- =====================================================
+     HERO
+====================================================== -->
+
+<div class="relative">
+
+    <section
+        id="home"
+        class="sticky top-20 z-0 flex min-h-[calc(100vh-80px)] items-center overflow-hidden bg-slate-950"
+    >
+
+        <img
+            id="heroImage"
+            src="https://images.unsplash.com/photo-1531123897727-8f129e1688ce?auto=format&fit=crop&w=1800&q=90"
+            alt="Woman wearing eyeglasses"
+            class="hero-image absolute inset-0 h-full w-full object-cover opacity-55"
+        >
+
+        <div
+            class="absolute inset-0 bg-gradient-to-r from-slate-950 via-blue-950/85 to-cyan-950/40"
+        ></div>
+
+        <div
+            class="absolute inset-0 bg-[radial-gradient(circle_at_70%_30%,rgba(59,130,246,0.3),transparent_35%)]"
+        ></div>
+
+        <div
+            class="absolute left-[8%] top-[20%] h-40 w-40 rounded-full bg-blue-500/20 blur-3xl animate-float"
+        ></div>
+
+        <div
+            class="absolute right-[10%] top-[25%] h-56 w-56 rounded-full bg-cyan-400/15 blur-3xl animate-float-slow"
+        ></div>
+
+        <div
+            class="absolute bottom-[15%] right-[30%] h-44 w-44 rounded-full bg-indigo-500/20 blur-3xl animate-pulse-glow"
+        ></div>
+
+        <div
+            class="relative mx-auto w-full max-w-7xl px-5 py-24"
+        >
+
+            <div class="max-w-3xl text-white">
+
+                <div
+                    class="mb-6 inline-flex items-center gap-3 rounded-full border border-blue-300/20 bg-blue-400/10 px-5 py-2.5 text-xs font-bold tracking-widest backdrop-blur-md"
+                >
+
+                    <span
+                        class="h-2 w-2 animate-pulse rounded-full bg-emerald-400"
+                    ></span>
+
+                    SMART EYEGLASSES
+
+                </div>
+
+                <h1
+                    class="text-5xl font-black leading-[0.95] tracking-tight sm:text-7xl lg:text-8xl"
+                >
+
+                    Find Your Specs.
+
+                    <br>
+
+                    <span class="blue-text">
+                        Find Your Spot.
+                    </span>
+
+                </h1>
+
+                <p
+                    class="mt-8 max-w-xl text-lg leading-8 text-slate-200"
+                >
+
+                    Smart eyewear with an integrated chip that helps you locate
+                    your spectacles through your mobile application.
+
+                </p>
+
+                <div class="mt-10 flex flex-wrap gap-4">
+
+                    <a
+                        href="#smart"
+                        class="rounded-full bg-gradient-to-r from-blue-500 to-cyan-400 px-7 py-4 text-sm font-black text-white shadow-xl shadow-blue-500/30 transition hover:-translate-y-1 hover:shadow-blue-500/50"
+                    >
+                        Discover Smart Specs →
+                    </a>
+
+                    <a
+                        href="#how"
+                        class="rounded-full border border-white/20 bg-white/10 px-7 py-4 text-sm font-bold text-white backdrop-blur-md transition hover:bg-blue-500/20"
+                    >
+                        How It Works
+                    </a>
+
+                </div>
+
+            </div>
+
+        </div>
+
+        <div
+            class="absolute bottom-7 left-1/2 hidden -translate-x-1/2 flex-col items-center text-xs text-blue-200/70 md:flex"
+        >
+
+            <span>
+                SCROLL TO EXPLORE
+            </span>
+
+            <div
+                class="mt-2 h-8 w-px bg-blue-400/60 line-glow"
+            ></div>
+
+        </div>
+
+    </section>
+
+
+    <!-- =================================================
+         SCROLLING CONTENT
+    ================================================== -->
+
+    <div
+        class="relative z-10 bg-[#020617]"
+        style="isolation:isolate;"
+    >
+
+        <!-- =====================================================
+             CATEGORIES
+        ====================================================== -->
+
+        <section class="section-gradient px-5 py-24">
+
+            <div class="mx-auto max-w-7xl">
+
+                <p
+                    class="scroll-reveal text-sm font-black uppercase tracking-[0.2em] text-blue-400"
+                >
+                    Explore BLENCEKART
+                </p>
+
+                <h2
+                    class="scroll-reveal mt-4 max-w-2xl text-4xl font-black tracking-tight sm:text-6xl"
+                >
+                    Eyewear for
+                    <span class="blue-text">
+                        every moment.
+                    </span>
+                </h2>
+
+                <p
+                    class="scroll-reveal mt-5 max-w-2xl text-lg leading-8 text-slate-400"
+                >
+                    Choose your eyewear and discover a smarter way to stay connected
+                    with the things you never want to lose.
+                </p>
+
+                <div
+                    class="mt-14 grid gap-5 sm:grid-cols-2 lg:grid-cols-3"
+                >
+
+                    <a href="#eyeglasses"
+                        class="glow-card scroll-reveal glass group rounded-3xl p-7">
+
+                        <div class="flex items-center justify-between">
+
+                            <div
+                                class="flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-500/10 text-2xl ring-1 ring-blue-400/20"
+                            >
+                                👓
+                            </div>
+
+                            <span class="text-sm font-black text-blue-300/40">
+                                01
+                            </span>
+
+                        </div>
+
+                        <h3 class="mt-7 text-xl font-black">
+                            Eyeglasses
+                        </h3>
+
+                        <p class="mt-2 leading-7 text-slate-400">
+                            Everyday vision with smart tracking.
+                        </p>
+
+                        <div class="mt-6 text-sm font-black text-blue-400">
+                            Explore →
+                        </div>
+
+                    </a>
+
+
+                    <a href="#sunglasses"
+                        class="glow-card scroll-reveal glass group rounded-3xl p-7">
+
+                        <div class="flex items-center justify-between">
+
+                            <div
+                                class="flex h-14 w-14 items-center justify-center rounded-2xl bg-cyan-500/10 text-2xl ring-1 ring-cyan-400/20"
+                            >
+                                🕶️
+                            </div>
+
+                            <span class="text-sm font-black text-blue-300/40">
+                                02
+                            </span>
+
+                        </div>
+
+                        <h3 class="mt-7 text-xl font-black">
+                            Sunglasses
+                        </h3>
+
+                        <p class="mt-2 leading-7 text-slate-400">
+                            Protection, style and smart technology.
+                        </p>
+
+                        <div class="mt-6 text-sm font-black text-blue-400">
+                            Explore →
+                        </div>
+
+                    </a>
+
+
+                    <a href="#contact"
+                        class="glow-card scroll-reveal glass group rounded-3xl p-7">
+
+                        <div class="flex items-center justify-between">
+
+                            <div
+                                class="flex h-14 w-14 items-center justify-center rounded-2xl bg-indigo-500/10 text-2xl ring-1 ring-indigo-400/20"
+                            >
+                                ◉
+                            </div>
+
+                            <span class="text-sm font-black text-blue-300/40">
+                                03
+                            </span>
+
+                        </div>
+
+                        <h3 class="mt-7 text-xl font-black">
+                            Contact Lenses
+                        </h3>
+
+                        <p class="mt-2 leading-7 text-slate-400">
+                            Explore comfortable vision solutions.
+                        </p>
+
+                        <div class="mt-6 text-sm font-black text-blue-400">
+                            Explore →
+                        </div>
+
+                    </a>
+
+
+                    <a href="#power"
+                        class="glow-card scroll-reveal glass group rounded-3xl p-7">
+
+                        <div class="flex items-center justify-between">
+
+                            <div
+                                class="flex h-14 w-14 items-center justify-center rounded-2xl bg-violet-500/10 text-2xl ring-1 ring-violet-400/20"
+                            >
+                                ✦
+                            </div>
+
+                            <span class="text-sm font-black text-blue-300/40">
+                                04
+                            </span>
+
+                        </div>
+
+                        <h3 class="mt-7 text-xl font-black">
+                            Special Power
+                        </h3>
+
+                        <p class="mt-2 leading-7 text-slate-400">
+                            Personalized eyewear for your vision.
+                        </p>
+
+                        <div class="mt-6 text-sm font-black text-blue-400">
+                            Explore →
+                        </div>
+
+                    </a>
+
+
+                    <a href="#stores"
+                        class="glow-card scroll-reveal glass group rounded-3xl p-7">
+
+                        <div class="flex items-center justify-between">
+
+                            <div
+                                class="flex h-14 w-14 items-center justify-center rounded-2xl bg-sky-500/10 text-2xl ring-1 ring-sky-400/20"
+                            >
+                                ⌖
+                            </div>
+
+                            <span class="text-sm font-black text-blue-300/40">
+                                05
+                            </span>
+
+                        </div>
+
+                        <h3 class="mt-7 text-xl font-black">
+                            Stores
+                        </h3>
+
+                        <p class="mt-2 leading-7 text-slate-400">
+                            Find BLENCEKART stores near you.
+                        </p>
+
+                        <div class="mt-6 text-sm font-black text-blue-400">
+                            Explore →
+                        </div>
+
+                    </a>
+
+
+                    <a href="#try"
+                        class="glow-card scroll-reveal glass group rounded-3xl p-7">
+
+                        <div class="flex items-center justify-between">
+
+                            <div
+                                class="flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-500/10 text-2xl ring-1 ring-blue-400/20"
+                            >
+                                ⌂
+                            </div>
+
+                            <span class="text-sm font-black text-blue-300/40">
+                                06
+                            </span>
+
+                        </div>
+
+                        <h3 class="mt-7 text-xl font-black">
+                            Try at Home
+                        </h3>
+
+                        <p class="mt-2 leading-7 text-slate-400">
+                            Experience your eyewear from home.
+                        </p>
+
+                        <div class="mt-6 text-sm font-black text-blue-400">
+                            Explore →
+                        </div>
+
+                    </a>
+
+                </div>
+
+            </div>
+
+        </section>
+
+
+        <!-- =====================================================
+             EYEGLASSES
+        ====================================================== -->
+
+        <section
+            id="eyeglasses"
+            class="category-destination scroll-mt-20 section-gradient px-5 py-28"
+        >
+
+            <div class="mx-auto max-w-7xl">
+
+                <div class="grid items-center gap-12 lg:grid-cols-2">
+
+                    <div class="scroll-reveal">
+
+                        <p
+                            class="text-sm font-black uppercase tracking-[0.2em] text-blue-400"
+                        >
+                            EYEGLASSES
+                        </p>
+
+                        <h2
+                            class="mt-5 text-4xl font-black sm:text-6xl"
+                        >
+                            Everyday vision with
+                            <span class="blue-text">
+                                smart tracking.
+                            </span>
+                        </h2>
+
+                        <p
+                            class="mt-7 max-w-xl text-lg leading-8 text-slate-400"
+                        >
+                            Everyday vision with smart tracking.
+                        </p>
+
+                        <a
+                            href="#smart"
+                            class="mt-8 inline-block rounded-full bg-blue-600 px-7 py-3 font-black transition hover:bg-blue-500"
+                        >
+                            Discover Smart Specs →
+                        </a>
+
+                    </div>
+
+
+                    <div class="scroll-reveal">
+
+                        <div class="model-frame h-[430px] w-full">
+
+                            <img
+                                src="https://images.unsplash.com/photo-1531123897727-8f129e1688ce?auto=format&fit=crop&w=1200&q=90"
+                                alt="Woman wearing eyeglasses"
+                                class="model-image"
+                            >
+
+                            <div class="model-overlay"></div>
+
+                            <div class="image-shine"></div>
+
+                            <div class="image-badge">
+                                SMART EYEGLASSES
+                            </div>
+
+                        </div>
+
+                    </div>
+
+                </div>
+
+            </div>
+
+        </section>
+
+
+        <!-- =====================================================
+             SUNGLASSES
+        ====================================================== -->
+
+        <section
+            id="sunglasses"
+            class="category-destination scroll-mt-20 section-gradient px-5 py-28"
+        >
+
+            <div class="mx-auto max-w-7xl">
+
+                <div class="grid items-center gap-12 lg:grid-cols-2">
+
+                    <div class="order-2 scroll-reveal lg:order-1">
+
+                        <p
+                            class="text-sm font-black uppercase tracking-[0.2em] text-cyan-400"
+                        >
+                            SUNGLASSES
+                        </p>
+
+                        <h2
+                            class="mt-5 text-4xl font-black sm:text-6xl"
+                        >
+                            Protection, style and
+                            <span class="blue-text">
+                                smart technology.
+                            </span>
+                        </h2>
+
+                        <p
+                            class="mt-7 max-w-xl text-lg leading-8 text-slate-400"
+                        >
+                            Protection, style and smart technology.
+                        </p>
+
+                        <a
+                            href="#smart"
+                            class="mt-8 inline-block rounded-full bg-gradient-to-r from-cyan-500 to-blue-600 px-7 py-3 font-black"
+                        >
+                            Explore Smart Technology →
+                        </a>
+
+                    </div>
+
+
+                    <div class="order-1 scroll-reveal lg:order-2">
+
+                        <div class="model-frame h-[500px] w-full">
+
+                            <img
+                                src="https://images.unsplash.com/photo-1511499767150-a48a237f0083?auto=format&fit=crop&w=1200&q=90"
+                                alt="Woman wearing stylish sunglasses"
+                                class="model-image"
+                            >
+
+                            <div class="model-overlay"></div>
+
+                            <div class="image-shine"></div>
+
+                            <div class="image-badge">
+                                SUNGLASSES
+                            </div>
+
+                        </div>
+
+                    </div>
+
+                </div>
+
+            </div>
+
+        </section>
+
+
+        <!-- =====================================================
+             CONTACT LENSES
+        ====================================================== -->
+
+        <section
+            id="contact"
+            class="category-destination scroll-mt-20 section-gradient px-5 py-28"
+        >
+
+            <div class="mx-auto max-w-7xl">
+
+                <div class="mx-auto max-w-4xl text-center">
+
+                    <p
+                        class="scroll-reveal text-sm font-black uppercase tracking-[0.2em] text-indigo-400"
+                    >
+                        CONTACT LENSES
+                    </p>
+
+                    <h2
+                        class="scroll-reveal mt-5 text-4xl font-black sm:text-6xl"
+                    >
+                        Explore comfortable
+                        <span class="blue-text">
+                            vision solutions.
+                        </span>
+                    </h2>
+
+                    <p
+                        class="scroll-reveal mx-auto mt-7 max-w-2xl text-lg leading-8 text-slate-400"
+                    >
+                        Explore comfortable vision solutions.
+                    </p>
+
+                    <div
+                        class="scroll-reveal mt-12 grid gap-5 md:grid-cols-3"
+                    >
+
+                        <div class="glass rounded-3xl p-7">
+
+                            <div class="text-4xl">
+                                ◉
+                            </div>
+
+                            <h3 class="mt-5 font-black">
+                                Comfortable
+                            </h3>
+
+                            <p class="mt-2 text-sm leading-6 text-slate-400">
+                                Designed around everyday vision needs.
+                            </p>
+
+                        </div>
+
+                        <div class="glass rounded-3xl p-7">
+
+                            <div class="text-4xl">
+                                ✦
+                            </div>
+
+                            <h3 class="mt-5 font-black">
+                                Personalized
+                            </h3>
+
+                            <p class="mt-2 text-sm leading-6 text-slate-400">
+                                Vision solutions designed around you.
+                            </p>
+
+                        </div>
+
+                        <div class="glass rounded-3xl p-7">
+
+                            <div class="text-4xl">
+                                📱
+                            </div>
+
+                            <h3 class="mt-5 font-black">
+                                Connected
+                            </h3>
+
+                            <p class="mt-2 text-sm leading-6 text-slate-400">
+                                Explore the BLENCEKART ecosystem.
+                            </p>
+
+                        </div>
+
+                    </div>
+
+                </div>
+
+            </div>
+
+        </section>
+
+
+        <!-- =====================================================
+             SPECIAL POWER
+        ====================================================== -->
+
+        <section
+            id="power"
+            class="category-destination scroll-mt-20 section-gradient px-5 py-28"
+        >
+
+            <div class="mx-auto max-w-7xl">
+
+                <div class="grid items-center gap-12 lg:grid-cols-2">
+
+                    <div class="scroll-reveal">
+
+                        <p
+                            class="text-sm font-black uppercase tracking-[0.2em] text-violet-400"
+                        >
+                            SPECIAL POWER
+                        </p>
+
+                        <h2
+                            class="mt-5 text-4xl font-black sm:text-6xl"
+                        >
+                            Personalized eyewear
+                            <span class="blue-text">
+                                for your vision.
+                            </span>
+                        </h2>
+
+                        <p
+                            class="mt-7 max-w-xl text-lg leading-8 text-slate-300"
+                        >
+                            Personalized eyewear for your vision.
+                        </p>
+
+                        <a
+                            href="#smart"
+                            class="mt-8 inline-block rounded-full bg-gradient-to-r from-violet-500 to-blue-600 px-7 py-3 font-black"
+                        >
+                            Explore →
+                        </a>
+
+                    </div>
+
+
+                    <div class="scroll-reveal">
+
+                        <div class="model-frame h-[450px] w-full">
+
+                            <img
+                                src="https://images.unsplash.com/photo-1488426862026-3ee34a7d66df?auto=format&fit=crop&w=1200&q=90"
+                                alt="Woman wearing modern eyeglasses"
+                                class="model-image"
+                            >
+
+                            <div class="model-overlay"></div>
+
+                            <div class="image-shine"></div>
+
+                            <div class="image-badge">
+                                PERSONALIZED VISION
+                            </div>
+
+                        </div>
+
+                    </div>
+
+                </div>
+
+            </div>
+
+        </section>
+
+
+        <!-- =====================================================
+             STORES
+        ====================================================== -->
+
+        <section
+            id="stores"
+            class="category-destination scroll-mt-20 section-gradient px-5 py-28"
+        >
+
+            <div class="mx-auto max-w-7xl">
+
+                <div class="grid items-center gap-12 lg:grid-cols-2">
+
+                    <div class="order-2 scroll-reveal lg:order-1">
+
+                        <p
+                            class="text-sm font-black uppercase tracking-[0.2em] text-sky-400"
+                        >
+                            STORES
+                        </p>
+
+                        <h2
+                            class="mt-5 text-4xl font-black sm:text-6xl"
+                        >
+                            Find BLENCEKART
+                            <span class="blue-text">
+                                stores near you.
+                            </span>
+                        </h2>
+
+                        <p
+                            class="mt-7 max-w-xl text-lg leading-8 text-slate-400"
+                        >
+                            Find BLENCEKART stores near you.
+                        </p>
+
+                        <button
+                            onclick="showStoreMessage()"
+                            class="mt-8 rounded-full bg-gradient-to-r from-sky-500 to-blue-600 px-7 py-3 font-black transition hover:-translate-y-1"
+                        >
+                            Find a Store →
+                        </button>
+
+                        <p
+                            id="storeMessage"
+                            class="mt-5 hidden text-sm font-bold text-cyan-300"
+                        >
+                            Store locator will be available here.
+                        </p>
+
+                    </div>
+
+
+                    <div class="order-1 scroll-reveal lg:order-2">
+
+                        <div class="model-frame h-[450px] w-full">
+
+                            <img
+                                src="https://images.unsplash.com/photo-1574258495973-f010dfbb5371?auto=format&fit=crop&w=1200&q=90"
+                                alt="Eyewear store"
+                                class="model-image"
+                            >
+
+                            <div class="model-overlay"></div>
+
+                            <div class="image-shine"></div>
+
+                            <div class="image-badge">
+                                BLENCEKART STORES
+                            </div>
+
+                        </div>
+
+                    </div>
+
+                </div>
+
+            </div>
+
+        </section>
+
+
+        <!-- =====================================================
+             TRY AT HOME
+        ====================================================== -->
+
+        <section
+            id="try"
+            class="category-destination scroll-mt-20 section-gradient px-5 py-28"
+        >
+
+            <div class="mx-auto max-w-7xl">
+
+                <div class="mx-auto max-w-4xl text-center">
+
+                    <p
+                        class="scroll-reveal text-sm font-black uppercase tracking-[0.2em] text-blue-400"
+                    >
+                        TRY AT HOME
+                    </p>
+
+                    <h2
+                        class="scroll-reveal mt-5 text-4xl font-black sm:text-6xl"
+                    >
+                        Experience your eyewear
+                        <span class="blue-text">
+                            from home.
+                        </span>
+                    </h2>
+
+                    <p
+                        class="scroll-reveal mx-auto mt-7 max-w-2xl text-lg leading-8 text-slate-400"
+                    >
+                        Experience your eyewear from home.
+                    </p>
+
+                    <div class="scroll-reveal mt-12">
+
+                        <div
+                            class="glass mx-auto max-w-4xl overflow-hidden rounded-[2rem]"
+                        >
+
+                            <div class="grid md:grid-cols-2">
+
+                                <div
+                                    class="model-frame min-h-[380px] rounded-none"
+                                >
+
+                                    <img
+                                        src="https://images.unsplash.com/photo-1529139574466-a303027c1d8b?auto=format&fit=crop&w=1200&q=90"
+                                        alt="Woman wearing eyeglasses at home"
+                                        class="model-image"
+                                    >
+
+                                    <div class="model-overlay"></div>
+
+                                    <div class="image-shine"></div>
+
+                                </div>
+
+
+                                <div class="flex flex-col justify-center p-10 text-left">
+
+                                    <h3 class="text-2xl font-black">
+                                        Try BLENCEKART at home
+                                    </h3>
+
+                                    <p class="mt-3 text-slate-400">
+                                        Experience your eyewear from the comfort of your home.
+                                    </p>
+
+                                    <button
+                                        onclick="showHomeMessage()"
+                                        class="mt-7 w-fit rounded-full bg-gradient-to-r from-blue-500 to-cyan-400 px-7 py-3 font-black"
+                                    >
+                                        Start Try at Home →
+                                    </button>
+
+                                    <p
+                                        id="homeMessage"
+                                        class="mt-5 hidden text-sm font-bold text-cyan-300"
+                                    >
+                                        Try-at-home experience will be available here.
+                                    </p>
+
+                                </div>
+
+                            </div>
+
+                        </div>
+
+                    </div>
+
+                </div>
+
+            </div>
+
+        </section>
+
+
+        <!-- =====================================================
+             SMART TECHNOLOGY
+        ====================================================== -->
+
+        <section
+            id="smart"
+            class="section-gradient scroll-mt-20 px-5 py-28"
+        >
+
+            <div
+                class="mx-auto grid max-w-7xl items-center gap-16 lg:grid-cols-2"
+            >
+
+                <div class="scroll-reveal">
+
+                    <p
+                        class="text-sm font-black uppercase tracking-[0.2em] text-blue-400"
+                    >
+                        OUR SMART TECHNOLOGY
+                    </p>
+
+                    <h2
+                        class="mt-5 text-4xl font-black tracking-tight sm:text-6xl"
+                    >
+
+                        Your specs.
+
+                        <br>
+
+                        <span class="blue-text">
+                            Connected to you.
+                        </span>
+
+                    </h2>
+
+                    <p
+                        class="mt-7 max-w-xl text-lg leading-8 text-slate-400"
+                    >
+                        BLENCEKART introduces a smart chip integrated with your
+                        eyewear. The chip connects with your mobile application
+                        and helps you identify where your spectacles were last
+                        connected.
+                    </p>
+
+                    <div class="mt-10 space-y-7">
+
+                        <div class="flex gap-5">
+
+                            <div
+                                class="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-blue-500/10 text-xs font-black text-blue-400 ring-1 ring-blue-400/20"
+                            >
+                                01
+                            </div>
+
+                            <div>
+
+                                <h3 class="font-black">
+                                    Integrated Smart Chip
+                                </h3>
+
+                                <p class="mt-1 leading-7 text-slate-500">
+                                    A compact smart chip is attached to your eyewear.
+                                </p>
+
+                            </div>
+
+                        </div>
+
+
+                        <div class="flex gap-5">
+
+                            <div
+                                class="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-blue-500/10 text-xs font-black text-blue-400 ring-1 ring-blue-400/20"
+                            >
+                                02
+                            </div>
+
+                            <div>
+
+                                <h3 class="font-black">
+                                    Connect With Your Phone
+                                </h3>
+
+                                <p class="mt-1 leading-7 text-slate-500">
+                                    Your glasses communicate with the BLENCEKART
+                                    mobile application.
+                                </p>
+
+                            </div>
+
+                        </div>
+
+
+                        <div class="flex gap-5">
+
+                            <div
+                                class="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-blue-500/10 text-xs font-black text-blue-400 ring-1 ring-blue-400/20"
+                            >
+                                03
+                            </div>
+
+                            <div>
+
+                                <h3 class="font-black">
+                                    Find Your Specs
+                                </h3>
+
+                                <p class="mt-1 leading-7 text-slate-500">
+                                    Open the app and check where your specs were
+                                    last detected.
+                                </p>
+
+                            </div>
+
+                        </div>
+
+                    </div>
+
+                </div>
+
+
+                <!-- PHONE MOCKUP -->
+
+                <div class="flex justify-center">
+
+                    <div class="relative parallax">
+
+                        <div
+                            class="absolute inset-0 rounded-full bg-blue-500/30 blur-3xl animate-pulse-glow"
+                        ></div>
+
+                        <div
+                            class="absolute -right-10 top-10 h-20 w-20 rounded-full border border-cyan-400/30 animate-spin-slow"
+                        ></div>
+
+                        <div
+                            class="relative w-72 rounded-[3rem] border-[8px] border-slate-800 bg-slate-950 p-3 shadow-2xl shadow-blue-900/40"
+                        >
+
+                            <div
+                                class="rounded-[2.4rem] bg-gradient-to-b from-blue-950 to-slate-950 px-5 py-10"
+                            >
+
+                                <div class="text-center">
+
+                                    <p
+                                        class="text-xs font-black text-blue-400"
+                                    >
+                                        BLENCEKART
+                                    </p>
+
+                                    <h3
+                                        class="mt-3 text-2xl font-black"
+                                    >
+                                        Where is my
+                                        <br>
+                                        <span class="text-blue-400">
+                                            spec?
+                                        </span>
+                                    </h3>
+
+                                </div>
+
+
+                                <div
+                                    class="mt-8 rounded-3xl bg-white/5 p-4 ring-1 ring-white/10"
+                                >
+
+                                    <div
+                                        class="flex h-36 items-center justify-center overflow-hidden rounded-2xl bg-blue-500/10"
+                                    >
+
+                                        <img
+                                            src="https://images.unsplash.com/photo-1511499767150-a48a237f0083?auto=format&fit=crop&w=500&q=80"
+                                            alt="Sunglasses"
+                                            class="h-full w-full object-cover opacity-80"
+                                        >
+
+                                    </div>
+
+                                    <div class="mt-5">
+
+                                        <p
+                                            class="text-xs text-slate-500"
+                                        >
+                                            LAST DETECTED
+                                        </p>
+
+                                        <p class="mt-1 font-black">
+                                            Living Room
+                                        </p>
+
+                                        <p
+                                            class="text-xs text-slate-500"
+                                        >
+                                            2 minutes ago
+                                        </p>
+
+                                    </div>
+
+                                </div>
+
+                                <button
+                                    class="mt-5 w-full rounded-2xl bg-gradient-to-r from-blue-600 to-cyan-500 py-4 text-sm font-black text-white shadow-lg shadow-blue-500/20"
+                                >
+                                    Locate My Specs
+                                </button>
+
+                            </div>
+
+                        </div>
+
+                    </div>
+
+                </div>
+
+            </div>
+
+        </section>
+
+
+        <!-- =====================================================
+             HOW IT WORKS
+        ====================================================== -->
+
+        <section
+            id="how"
+            class="scroll-mt-20 bg-gradient-to-br from-slate-950 via-blue-950 to-indigo-950 px-5 py-28 text-white relative z-10"
+        >
+
+            <div class="mx-auto max-w-7xl">
+
+                <p
+                    class="scroll-reveal text-sm font-black uppercase tracking-[0.2em] text-blue-400"
+                >
+                    SIMPLE. SMART. CONNECTED.
+                </p>
+
+                <h2
+                    class="scroll-reveal mt-5 text-4xl font-black sm:text-6xl"
+                >
+                    From your glasses
+                    <br>
+                    <span class="blue-text">
+                        to your phone.
+                    </span>
+                </h2>
+
+                <div class="mt-16 grid gap-5 md:grid-cols-4">
+
+                    <div class="glow-card scroll-reveal glass rounded-3xl p-7">
+
+                        <div class="flex items-center justify-between">
+
+                            <span class="text-sm font-black text-blue-400">
+                                01
+                            </span>
+
+                            <span class="text-3xl">
+                                👓
+                            </span>
+
+                        </div>
+
+                        <h3 class="mt-8 text-xl font-black">
+                            Wear
+                        </h3>
+
+                        <p class="mt-3 leading-7 text-slate-400">
+                            Wear your BLENCEKART eyewear normally.
+                        </p>
+
+                    </div>
+
+
+                    <div class="glow-card scroll-reveal glass rounded-3xl p-7">
+
+                        <div class="flex items-center justify-between">
+
+                            <span class="text-sm font-black text-blue-400">
+                                02
+                            </span>
+
+                            <span class="text-3xl">
+                                📱
+                            </span>
+
+                        </div>
+
+                        <h3 class="mt-8 text-xl font-black">
+                            Connect
+                        </h3>
+
+                        <p class="mt-3 leading-7 text-slate-400">
+                            The integrated chip connects your eyewear with your phone.
+                        </p>
+
+                    </div>
+
+
+                    <div class="glow-card scroll-reveal glass rounded-3xl p-7">
+
+                        <div class="flex items-center justify-between">
+
+                            <span class="text-sm font-black text-blue-400">
+                                03
+                            </span>
+
+                            <span class="text-3xl">
+                                🔎
+                            </span>
+
+                        </div>
+
+                        <h3 class="mt-8 text-xl font-black">
+                            Misplaced?
+                        </h3>
+
+                        <p class="mt-3 leading-7 text-slate-400">
+                            Can't remember where you left your spectacles?
+                        </p>
+
+                    </div>
+
+
+                    <div class="glow-card scroll-reveal glass rounded-3xl p-7">
+
+                        <div class="flex items-center justify-between">
+
+                            <span class="text-sm font-black text-blue-400">
+                                04
+                            </span>
+
+                            <span class="text-3xl">
+                                📍
+                            </span>
+
+                        </div>
+
+                        <h3 class="mt-8 text-xl font-black">
+                            Find
+                        </h3>
+
+                        <p class="mt-3 leading-7 text-slate-400">
+                            Open the app and check where your specs were last detected.
+                        </p>
+
+                    </div>
+
+                </div>
+
+            </div>
+
+        </section>
+
+
+        <!-- =====================================================
+             REAL LIFE
+        ====================================================== -->
+
+        <section class="section-gradient px-5 py-28">
+
+            <div
+                class="mx-auto grid max-w-7xl items-center gap-14 lg:grid-cols-2"
+            >
+
+                <div
+                    class="scroll-reveal model-frame min-h-[500px] overflow-hidden rounded-[2rem] ring-1 ring-blue-400/20"
+                >
+
+                    <img
+                        id="lifeImage"
+                        src="https://images.unsplash.com/photo-1524504388940-b1c1722653e1?auto=format&fit=crop&w=1200&q=90"
+                        alt="Woman wearing glasses"
+                        class="model-image min-h-[500px]"
+                    >
+
+                    <div class="model-overlay"></div>
+
+                    <div class="image-shine"></div>
+
+                </div>
+
+
+                <div class="scroll-reveal">
+
+                    <p
+                        class="text-sm font-black uppercase tracking-[0.2em] text-blue-400"
+                    >
+                        BUILT FOR REAL LIFE
+                    </p>
+
+                    <h2 class="mt-5 text-4xl font-black sm:text-5xl">
+
+                        Because losing your glasses
+
+                        <span class="blue-text">
+                            happens.
+                        </span>
+
+                    </h2>
+
+                    <p class="mt-7 text-lg leading-8 text-slate-400">
+
+                        At home. At work. In a restaurant. At college.
+                        In the office. Somewhere you visited yesterday.
+
+                    </p>
+
+                    <p class="mt-5 text-lg leading-8 text-slate-400">
+
+                        Instead of searching every room, BLENCEKART gives you
+                        a smarter starting point.
+
+                    </p>
+
+                    <div class="mt-9 grid grid-cols-2 gap-4">
+
+                        <div class="glow-card glass rounded-2xl p-5">
+
+                            <h3 class="font-black">
+                                Home
+                            </h3>
+
+                            <p class="mt-2 text-sm leading-6 text-slate-500">
+                                Locate your specs around your living space.
+                            </p>
+
+                        </div>
+
+                        <div class="glow-card glass rounded-2xl p-5">
+
+                            <h3 class="font-black">
+                                Office
+                            </h3>
+
+                            <p class="mt-2 text-sm leading-6 text-slate-500">
+                                Know where they were last connected.
+                            </p>
+
+                        </div>
+
+                        <div class="glow-card glass rounded-2xl p-5">
+
+                            <h3 class="font-black">
+                                College
+                            </h3>
+
+                            <p class="mt-2 text-sm leading-6 text-slate-500">
+                                Keep track of your everyday eyewear.
+                            </p>
+
+                        </div>
+
+                        <div class="glow-card glass rounded-2xl p-5">
+
+                            <h3 class="font-black">
+                                Anywhere
+                            </h3>
+
+                            <p class="mt-2 text-sm leading-6 text-slate-500">
+                                A smarter way to locate your specs.
+                            </p>
+
+                        </div>
+
+                    </div>
+
+                </div>
+
+            </div>
+
+        </section>
+
+
+        <!-- =====================================================
+             VISION
+        ====================================================== -->
+
+        <section class="section-gradient px-5 py-28">
+
+            <div class="mx-auto max-w-5xl text-center">
+
+                <p
+                    class="scroll-reveal text-sm font-black uppercase tracking-[0.2em] text-blue-400"
+                >
+                    OUR HOLISTIC VISION
+                </p>
+
+                <h2
+                    class="scroll-reveal mt-5 text-4xl font-black sm:text-6xl"
+                >
+
+                    We are not just making
+
+                    <br>
+
+                    <span class="blue-text">
+                        smart glasses.
+                    </span>
+
+                </h2>
+
+                <p
+                    class="scroll-reveal mx-auto mt-8 max-w-3xl text-lg leading-8 text-slate-400"
+                >
+
+                    We are building a smarter relationship between people and the
+                    things they carry every day. BLENCEKART combines eyewear,
+                    connectivity and intelligent location technology.
+
+                </p>
+
+                <div
+                    class="scroll-reveal relative mt-12 overflow-hidden rounded-[2rem] bg-gradient-to-br from-blue-950 via-slate-950 to-indigo-950 p-10 text-left text-white shadow-2xl shadow-blue-950/50 ring-1 ring-blue-400/20 sm:p-14"
+                >
+
+                    <div
+                        class="absolute -right-20 -top-20 h-60 w-60 rounded-full bg-blue-500/20 blur-3xl"
+                    ></div>
+
+                    <p
+                        class="relative text-2xl font-black sm:text-4xl"
+                    >
+                        "Where did I leave my glasses?"
+                    </p>
+
+                    <div class="my-8 h-px bg-white/10"></div>
+
+                    <p
+                        class="relative text-lg leading-8 text-slate-300"
+                    >
+                        With BLENCEKART, that question can have a smarter answer.
+                    </p>
+
+                </div>
+
+            </div>
+
+        </section>
+
+
+        <!-- =====================================================
+             CTA
+        ====================================================== -->
+
+        <section class="section-gradient px-5 py-28">
+
+            <div
+                class="relative mx-auto max-w-7xl overflow-hidden rounded-[2.5rem] bg-gradient-to-br from-blue-600 via-indigo-600 to-cyan-500 px-7 py-16 text-center text-white shadow-2xl shadow-blue-950/50 sm:px-16"
+            >
+
+                <div
+                    class="absolute -left-20 -top-20 h-64 w-64 rounded-full bg-white/10 blur-3xl"
+                ></div>
+
+                <div
+                    class="absolute -bottom-20 -right-20 h-64 w-64 rounded-full bg-cyan-200/20 blur-3xl"
+                ></div>
+
+                <p
+                    class="relative text-sm font-black uppercase tracking-[0.2em] text-blue-100"
+                >
+                    THE FUTURE OF EYEWEAR
+                </p>
+
+                <h2
+                    class="relative mt-5 text-4xl font-black sm:text-6xl"
+                >
+
+                    Never lose sight
+
+                    <br>
+
+                    of your specs again.
+
+                </h2>
+
+                <p
+                    class="relative mx-auto mt-6 max-w-xl text-lg leading-8 text-blue-100"
+                >
+                    Experience eyewear that goes beyond vision.
+                </p>
+
+                <a
+                    href="user_login.html"
+                    class="relative mt-9 inline-block rounded-full bg-white px-8 py-4 text-sm font-black text-blue-600 shadow-lg transition hover:-translate-y-1 hover:shadow-2xl"
+                >
+                    Get Started
+                </a>
+
+            </div>
+
+        </section>
+
+
+        <!-- =====================================================
+             FOOTER
+        ====================================================== -->
+
+        <footer
+            class="bg-slate-950 px-5 py-14 text-white"
+        >
+
+            <div
+                class="mx-auto grid max-w-7xl gap-10 md:grid-cols-4"
+            >
+
+                <div class="md:col-span-2">
+
+                    <div class="text-2xl font-black">
+                        BLENCE<span class="text-blue-500">KART</span>
+                    </div>
+
+                    <p
+                        class="mt-4 max-w-md leading-7 text-slate-400"
+                    >
+                        Smart eyewear designed to help you find your specs
+                        wherever you left them.
+                    </p>
+
+                </div>
+
+                <div>
+
+                    <h3 class="font-black">
+                        Explore
+                    </h3>
+
+                    <div
+                        class="mt-4 space-y-3 text-sm text-slate-400"
+                    >
+
+                        <a href="#eyeglasses"
+                            class="block hover:text-blue-400">
+                            Eyeglasses
+                        </a>
+
+                        <a href="#sunglasses"
+                            class="block hover:text-blue-400">
+                            Sunglasses
+                        </a>
+
+                        <a href="#contact"
+                            class="block hover:text-blue-400">
+                            Contact Lenses
+                        </a>
+
+                        <a href="#power"
+                            class="block hover:text-blue-400">
+                            Special Power
+                        </a>
+
+                        <a href="#stores"
+                            class="block hover:text-blue-400">
+                            Stores
+                        </a>
+
+                        <a href="#try"
+                            class="block hover:text-blue-400">
+                            Try at Home
+                        </a>
+
+                        <a href="#how"
+                            class="block hover:text-blue-400">
+                            How It Works
+                        </a>
+
+                    </div>
+
+                </div>
+
+                <div>
+
+                    <h3 class="font-black">
+                        Company
+                    </h3>
+
+                    <div
+                        class="mt-4 space-y-3 text-sm text-slate-400"
+                    >
+
+                        <a href="#smart"
+                            class="block hover:text-blue-400">
+                            About
+                        </a>
+
+                        <a href="#smart"
+                            class="block hover:text-blue-400">
+                            Technology
+                        </a>
+
+                        <a href="#"
+                            class="block hover:text-blue-400">
+                            Contact
+                        </a>
+
+                        <a href="#"
+                            class="block hover:text-blue-400">
+                            Privacy
+                        </a>
+
+                    </div>
+
+                </div>
+
+            </div>
+
+            <div
+                class="mx-auto mt-12 max-w-7xl border-t border-white/10 pt-7 text-sm text-slate-500"
+            >
+
+                © 2026 BLENCEKART. Smart Eyewear Technology.
+
+            </div>
+
+        </footer>
+
+    </div>
+
+</div>
+
+
+<!-- =====================================================
+     FLOATING CHAT BUTTON
+====================================================== -->
+
+<!-- CHANGED: User login redirect -->
+<a
+    href="user_login.html"
+    class="fixed bottom-6 right-5 z-[110] flex items-center gap-3 rounded-full bg-gradient-to-r from-blue-600 to-cyan-500 px-4 py-3 text-sm font-black text-white shadow-2xl shadow-blue-900/40 transition hover:-translate-y-1 hover:shadow-blue-500/50 sm:right-7 sm:px-5"
+>
+
+    <span
+        class="flex h-11 w-11 items-center justify-center rounded-full bg-white/20 text-xl backdrop-blur"
+    >
+        ✦
+    </span>
+
+    <span class="hidden sm:block">
+        Hey, how can I help you?
+    </span>
+
+</a>
+
+
+<!-- =====================================================
+     SCROLL EFFECTS
+====================================================== -->
+
+<script>
+
+    const revealElements =
+        document.querySelectorAll(".scroll-reveal");
+
+    const revealObserver =
+        new IntersectionObserver(
+
+            (entries) => {
+
+                entries.forEach((entry) => {
+
+                    if (entry.isIntersecting) {
+
+                        entry.target.classList.add("show");
+
+                        revealObserver.unobserve(entry.target);
+
+                    }
+
+                });
+
+            },
+
+            {
+                threshold: 0.12
+            }
+
+        );
+
+    revealElements.forEach((element) => {
+
+        revealObserver.observe(element);
+
+    });
+
+
+    /* =====================================================
+       HERO PARALLAX
+    ====================================================== */
+
+    const heroImage =
+        document.getElementById("heroImage");
+
+    const lifeImage =
+        document.getElementById("lifeImage");
+
+    window.addEventListener(
+
+        "scroll",
+
+        () => {
+
+            const scrollY =
+                window.scrollY;
+
+            if (heroImage) {
+
+                const movement =
+                    Math.min(
+                        scrollY * 0.08,
+                        80
+                    );
+
+                heroImage.style.transform =
+                    `scale(1.05) translateY(${movement}px)`;
+
+            }
+
+            if (lifeImage) {
+
+                const rect =
+                    lifeImage.getBoundingClientRect();
+
+                const movement =
+                    (
+                        window.innerHeight / 2
+                        -
+                        rect.top
+                    ) * 0.025;
+
+                lifeImage.style.transform =
+                    `scale(1.03) translateY(${movement}px)`;
+
+            }
+
+        },
+
+        {
+            passive: true
+        }
+
+    );
+
+
+    /* =====================================================
+       PHONE PARALLAX
+    ====================================================== */
+
+    const phone =
+        document.querySelector(".parallax");
+
+    window.addEventListener(
+
+        "scroll",
+
+        () => {
+
+            if (!phone) return;
+
+            const rect =
+                phone.getBoundingClientRect();
+
+            const center =
+                window.innerHeight / 2;
+
+            const distance =
+                center - rect.top;
+
+            phone.style.transform =
+                `translateY(${distance * 0.025}px)`;
+
+        },
+
+        {
+            passive: true
+        }
+
+    );
+
+
+    /* =====================================================
+       STORE INTERACTION
+    ====================================================== */
+
+    function showStoreMessage() {
+
+        const message =
+            document.getElementById("storeMessage");
+
+        if (message) {
+
+            message.classList.remove("hidden");
+
+        }
+
+    }
+
+
+    /* =====================================================
+       TRY AT HOME INTERACTION
+    ====================================================== */
+
+    function showHomeMessage() {
+
+        const message =
+            document.getElementById("homeMessage");
+
+        if (message) {
+
+            message.classList.remove("hidden");
+
+        }
+
+    }
+
+
+    /* =====================================================
+       SMOOTH INTERNAL NAVIGATION
+    ====================================================== */
+
+    document
+        .querySelectorAll('a[href^="#"]')
+        .forEach((link) => {
+
+            link.addEventListener(
+                "click",
+                function (event) {
+
+                    const targetId =
+                        this.getAttribute("href");
+
+                    if (
+                        !targetId ||
+                        targetId === "#"
+                    ) {
+                        return;
+                    }
+
+                    const target =
+                        document.querySelector(targetId);
+
+                    if (!target) {
+                        return;
+                    }
+
+                    event.preventDefault();
+
+                    target.scrollIntoView({
+
+                        behavior: "smooth",
+
+                        block: "start"
+
+                    });
+
+                    history.replaceState(
+                        null,
+                        "",
+                        targetId
+                    );
+
+                }
+            );
+
+        });
+
+</script>
+
+</body>
+
+</html>
+

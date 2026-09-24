@@ -1,0 +1,1013 @@
+<!DOCTYPE html>
+
+<html lang="en">
+
+<head>
+
+
+<meta charset="UTF-8">
+
+<meta
+    name="viewport"
+    content="width=device-width, initial-scale=1.0"
+>
+
+<title>BLENCEKART | User Sign In</title>
+
+<!-- Tailwind CSS -->
+<script src="https://cdn.tailwindcss.com"></script>
+
+<script>
+
+    tailwind.config = {
+
+        theme: {
+
+            extend: {
+
+                fontFamily: {
+
+                    sans: [
+                        "Inter",
+                        "Arial",
+                        "sans-serif"
+                    ]
+
+                }
+
+            }
+
+        }
+
+    }
+
+</script>
+
+
+<style>
+
+    html {
+        scroll-behavior: smooth;
+    }
+
+    body {
+
+        margin: 0;
+
+        overflow-x: hidden;
+
+        background: #020617;
+
+    }
+
+
+    /* =========================================
+       MAIN BACKGROUND
+    ========================================== */
+
+    .login-background {
+
+        min-height: 100vh;
+
+        background:
+
+            linear-gradient(
+                90deg,
+                rgba(2, 6, 23, 0.96) 0%,
+                rgba(2, 6, 23, 0.78) 40%,
+                rgba(2, 6, 23, 0.30) 100%
+            ),
+
+            url("girl-with-glasses.jpg");
+
+        background-size: cover;
+
+        background-position: center;
+
+        background-repeat: no-repeat;
+
+    }
+
+
+    /* =========================================
+       GLASS LOGIN CARD
+    ========================================== */
+
+    .glass {
+
+        background:
+            rgba(2, 6, 23, 0.72);
+
+        border:
+            1px solid rgba(255, 255, 255, 0.13);
+
+        backdrop-filter:
+            blur(20px);
+
+        -webkit-backdrop-filter:
+            blur(20px);
+
+        box-shadow:
+
+            0 30px 100px
+            rgba(0, 0, 0, 0.55),
+
+            0 0 60px
+            rgba(37, 99, 235, 0.16);
+
+    }
+
+
+    /* =========================================
+       GRADIENT TEXT
+    ========================================== */
+
+    .blue-text {
+
+        background:
+
+            linear-gradient(
+                90deg,
+                #60a5fa,
+                #22d3ee,
+                #818cf8
+            );
+
+        -webkit-background-clip: text;
+
+        background-clip: text;
+
+        color: transparent;
+
+    }
+
+
+    /* =========================================
+       INPUT
+    ========================================== */
+
+    .input-box {
+
+        background:
+            rgba(15, 23, 42, 0.72);
+
+        border:
+            1px solid rgba(255, 255, 255, 0.10);
+
+        transition:
+            all 0.3s ease;
+
+    }
+
+
+    .input-box:focus {
+
+        outline: none;
+
+        border-color:
+            rgba(59, 130, 246, 0.7);
+
+        box-shadow:
+            0 0 0 3px
+            rgba(37, 99, 235, 0.12);
+
+    }
+
+
+    /* =========================================
+       BUTTON
+    ========================================== */
+
+    .login-button {
+
+        background:
+            linear-gradient(
+                135deg,
+                #2563eb,
+                #06b6d4
+            );
+
+        transition:
+            all 0.3s ease;
+
+    }
+
+
+    .login-button:hover {
+
+        transform:
+            translateY(-2px);
+
+        box-shadow:
+            0 15px 35px
+            rgba(37, 99, 235, 0.35);
+
+    }
+
+
+    /* =========================================
+       SWITCH BUTTON
+    ========================================== */
+
+    .switch-button {
+
+        transition:
+            all 0.3s ease;
+
+    }
+
+
+    .switch-button:hover {
+
+        color:
+            #67e8f9;
+
+    }
+
+
+    /* =========================================
+       ERROR MESSAGE
+    ========================================== */
+
+    .error-message {
+
+        display: none;
+
+        background:
+            rgba(239, 68, 68, 0.10);
+
+        border:
+            1px solid
+            rgba(239, 68, 68, 0.25);
+
+        color:
+            #fca5a5;
+
+    }
+
+
+    /* =========================================
+       SUCCESS MESSAGE
+    ========================================== */
+
+    .success-message {
+
+        display: none;
+
+        background:
+            rgba(34, 197, 94, 0.10);
+
+        border:
+            1px solid
+            rgba(34, 197, 94, 0.25);
+
+        color:
+            #86efac;
+
+    }
+
+</style>
+```
+
+</head>
+
+<body>
+
+```
+<!-- =========================================
+     MAIN BACKGROUND
+========================================== -->
+
+<div class="login-background min-h-screen">
+
+
+    <!-- =====================================
+         TOP NAVIGATION
+    ====================================== -->
+
+    <nav
+        class="absolute left-0 right-0 top-0 z-20 flex items-center justify-between px-8 py-6"
+    >
+
+        <!-- BLENCEKART LOGO -->
+
+        <a
+            href="/index.html"
+            class="text-2xl font-black tracking-tight text-white"
+        >
+
+            BLENCE<span class="blue-text">
+                KART
+            </span>
+
+        </a>
+
+
+        <!-- BACK BUTTON -->
+
+        <a
+            href="/index.html"
+            class="rounded-xl border border-white/10 bg-white/5 px-5 py-2.5 text-sm font-semibold text-slate-300 backdrop-blur-md transition hover:bg-white/10 hover:text-white"
+        >
+
+            ← Back to BLENCEKART
+
+        </a>
+
+    </nav>
+
+
+    <!-- =====================================
+         LOGIN CONTENT
+    ====================================== -->
+
+    <main
+        class="relative z-10 flex min-h-screen items-center px-6 py-28"
+    >
+
+        <div class="mx-auto grid w-full max-w-6xl items-center gap-12 lg:grid-cols-2">
+
+
+            <!-- =================================
+                 LEFT INFORMATION
+            ================================== -->
+
+            <div class="hidden lg:block">
+
+                <div
+                    class="mb-5 inline-flex items-center rounded-full border border-blue-400/20 bg-blue-500/10 px-4 py-2 text-xs font-bold uppercase tracking-[0.2em] text-blue-300"
+                >
+
+                    Smart Eyewear
+
+                </div>
+
+
+                <h1
+                    class="max-w-xl text-5xl font-black leading-tight text-white"
+                >
+
+                    Find Your Specs.
+                    <br>
+
+                    <span class="blue-text">
+                        Find Your Spot.
+                    </span>
+
+                </h1>
+
+
+                <p
+                    class="mt-6 max-w-lg text-base leading-7 text-slate-300"
+                >
+
+                    Sign in to your BLENCEKART account and
+                    stay connected with your smart spectacles.
+
+                </p>
+
+
+                <div
+                    class="mt-8 flex items-center gap-3 text-sm text-slate-400"
+                >
+
+                    <div
+                        class="flex h-10 w-10 items-center justify-center rounded-full bg-blue-500/10 text-blue-300"
+                    >
+
+                        ✓
+
+                    </div>
+
+                    Secure account access
+
+                </div>
+
+
+                <div
+                    class="mt-4 flex items-center gap-3 text-sm text-slate-400"
+                >
+
+                    <div
+                        class="flex h-10 w-10 items-center justify-center rounded-full bg-cyan-500/10 text-cyan-300"
+                    >
+
+                        ✓
+
+                    </div>
+
+                    Smart spectacle tracking
+
+                </div>
+
+            </div>
+
+
+            <!-- =================================
+                 LOGIN / SIGNUP CARD
+            ================================== -->
+
+            <div
+                class="glass mx-auto w-full max-w-md rounded-3xl p-8"
+            >
+
+
+                <!-- =================================
+                     LOGIN FORM
+                ================================== -->
+
+                <div id="loginSection">
+
+                    <div class="mb-8">
+
+                        <div
+                            class="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-500 to-cyan-400 text-xl font-black shadow-lg shadow-blue-500/20"
+                        >
+
+                            B
+
+                        </div>
+
+
+                        <h2
+                            class="text-3xl font-black text-white"
+                        >
+
+                            Welcome Back
+
+                        </h2>
+
+
+                        <p
+                            class="mt-2 text-sm text-slate-400"
+                        >
+
+                            Sign in to your BLENCEKART account.
+
+                        </p>
+
+                    </div>
+
+
+                    <!-- ERROR -->
+
+                    <div
+                        id="loginError"
+                        class="error-message mb-5 rounded-xl px-4 py-3 text-sm"
+                    >
+                    </div>
+
+
+                    <!-- EMAIL -->
+
+                    <div class="mb-5">
+
+                        <label
+                            class="mb-2 block text-sm font-semibold text-slate-300"
+                        >
+
+                            Email
+
+                        </label>
+
+                        <input
+                            id="loginEmail"
+                            type="email"
+                            placeholder="Enter your email"
+                            class="input-box w-full rounded-xl px-4 py-3.5 text-sm text-white placeholder-slate-500"
+                        >
+
+                    </div>
+
+
+                    <!-- PASSWORD -->
+
+                    <div class="mb-6">
+
+                        <label
+                            class="mb-2 block text-sm font-semibold text-slate-300"
+                        >
+
+                            Password
+
+                        </label>
+
+                        <input
+                            id="loginPassword"
+                            type="password"
+                            placeholder="Enter your password"
+                            class="input-box w-full rounded-xl px-4 py-3.5 text-sm text-white placeholder-slate-500"
+                        >
+
+                    </div>
+
+
+                    <!-- LOGIN BUTTON -->
+
+                    <button
+                        onclick="loginUser()"
+                        class="login-button w-full rounded-xl px-5 py-3.5 text-sm font-bold text-white"
+                    >
+
+                        Sign In
+
+                    </button>
+
+
+                    <!-- SIGN UP LINK -->
+
+                    <p
+                        class="mt-6 text-center text-sm text-slate-400"
+                    >
+
+                        Don't have an account?
+
+                        <button
+                            onclick="showSignup()"
+                            class="switch-button ml-1 font-bold text-blue-400"
+                        >
+
+                            Sign Up
+
+                        </button>
+
+                    </p>
+
+                </div>
+
+
+                <!-- =================================
+                     SIGNUP FORM
+                ================================== -->
+
+                <div
+                    id="signupSection"
+                    class="hidden"
+                >
+
+                    <div class="mb-8">
+
+                        <div
+                            class="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-500 to-cyan-400 text-xl font-black shadow-lg shadow-blue-500/20"
+                        >
+
+                            B
+
+                        </div>
+
+
+                        <h2
+                            class="text-3xl font-black text-white"
+                        >
+
+                            Create Account
+
+                        </h2>
+
+
+                        <p
+                            class="mt-2 text-sm text-slate-400"
+                        >
+
+                            Create your BLENCEKART account.
+
+                        </p>
+
+                    </div>
+
+
+                    <!-- ERROR -->
+
+                    <div
+                        id="signupError"
+                        class="error-message mb-5 rounded-xl px-4 py-3 text-sm"
+                    >
+                    </div>
+
+
+                    <!-- SUCCESS -->
+
+                    <div
+                        id="signupSuccess"
+                        class="success-message mb-5 rounded-xl px-4 py-3 text-sm"
+                    >
+                    </div>
+
+
+                    <!-- USER NAME -->
+
+                    <div class="mb-5">
+
+                        <label
+                            class="mb-2 block text-sm font-semibold text-slate-300"
+                        >
+
+                            User Name
+
+                        </label>
+
+                        <input
+                            id="signupUsername"
+                            type="text"
+                            placeholder="Enter your username"
+                            class="input-box w-full rounded-xl px-4 py-3.5 text-sm text-white placeholder-slate-500"
+                        >
+
+                    </div>
+
+
+                    <!-- EMAIL -->
+
+                    <div class="mb-5">
+
+                        <label
+                            class="mb-2 block text-sm font-semibold text-slate-300"
+                        >
+
+                            Email
+
+                        </label>
+
+                        <input
+                            id="signupEmail"
+                            type="email"
+                            placeholder="Enter your email"
+                            class="input-box w-full rounded-xl px-4 py-3.5 text-sm text-white placeholder-slate-500"
+                        >
+
+                    </div>
+
+
+                    <!-- PASSWORD -->
+
+                    <div class="mb-6">
+
+                        <label
+                            class="mb-2 block text-sm font-semibold text-slate-300"
+                        >
+
+                            Password
+
+                        </label>
+
+                        <input
+                            id="signupPassword"
+                            type="password"
+                            placeholder="Create a password"
+                            class="input-box w-full rounded-xl px-4 py-3.5 text-sm text-white placeholder-slate-500"
+                        >
+
+                    </div>
+
+
+                    <!-- SIGNUP BUTTON -->
+
+                    <button
+                        onclick="signupUser()"
+                        class="login-button w-full rounded-xl px-5 py-3.5 text-sm font-bold text-white"
+                    >
+
+                        Create Account
+
+                    </button>
+
+
+                    <!-- LOGIN LINK -->
+
+                    <p
+                        class="mt-6 text-center text-sm text-slate-400"
+                    >
+
+                        Already have an account?
+
+                        <button
+                            onclick="showLogin()"
+                            class="switch-button ml-1 font-bold text-blue-400"
+                        >
+
+                            Sign In
+
+                        </button>
+
+                    </p>
+
+                </div>
+
+            </div>
+
+        </div>
+
+    </main>
+
+</div>
+
+
+<!-- =========================================
+     JAVASCRIPT
+========================================== -->
+
+<script>
+
+
+    // =========================================
+    // SHOW SIGNUP
+    // =========================================
+
+    function showSignup() {
+
+        document
+            .getElementById("loginSection")
+            .classList
+            .add("hidden");
+
+        document
+            .getElementById("signupSection")
+            .classList
+            .remove("hidden");
+
+    }
+
+
+    // =========================================
+    // SHOW LOGIN
+    // =========================================
+
+    function showLogin() {
+
+        document
+            .getElementById("signupSection")
+            .classList
+            .add("hidden");
+
+        document
+            .getElementById("loginSection")
+            .classList
+            .remove("hidden");
+
+    }
+
+
+    // =========================================
+    // USER SIGNUP
+    // =========================================
+
+    async function signupUser() {
+
+        const username =
+            document.getElementById("signupUsername").value.trim();
+
+        const email =
+            document.getElementById("signupEmail").value.trim();
+
+        const password =
+            document.getElementById("signupPassword").value;
+
+
+        const errorBox =
+            document.getElementById("signupError");
+
+        const successBox =
+            document.getElementById("signupSuccess");
+
+
+        errorBox.style.display = "none";
+
+        successBox.style.display = "none";
+
+
+        // Check empty fields
+
+        if (!username || !email || !password) {
+
+            errorBox.textContent =
+                "Please fill all the fields.";
+
+            errorBox.style.display = "block";
+
+            return;
+
+        }
+
+
+        try {
+
+            const response =
+                await fetch("/api/auth/register", {
+
+                    method: "POST",
+
+                    headers: {
+
+                        "Content-Type":
+                            "application/json"
+
+                    },
+
+                    body: JSON.stringify({
+
+                        username: username,
+
+                        email: email,
+
+                        password: password
+
+                    })
+
+                });
+
+
+            const result =
+                await response.json();
+
+
+            if (!response.ok) {
+
+                errorBox.textContent =
+                    result.detail ||
+                    "Unable to create account.";
+
+                errorBox.style.display =
+                    "block";
+
+                return;
+
+            }
+
+
+            successBox.textContent =
+                "Account created successfully. You can now sign in.";
+
+            successBox.style.display =
+                "block";
+
+
+            // Clear fields
+
+            document.getElementById(
+                "signupUsername"
+            ).value = "";
+
+            document.getElementById(
+                "signupEmail"
+            ).value = "";
+
+            document.getElementById(
+                "signupPassword"
+            ).value = "";
+
+
+            // Show login after successful signup
+
+            setTimeout(
+                showLogin,
+                1200
+            );
+
+        }
+
+
+        catch (error) {
+
+            errorBox.textContent =
+                "Unable to connect to the server.";
+
+            errorBox.style.display =
+                "block";
+
+        }
+
+    }
+
+
+    // =========================================
+    // USER LOGIN
+    // =========================================
+
+    async function loginUser() {
+
+        const email =
+            document.getElementById("loginEmail").value.trim();
+
+        const password =
+            document.getElementById("loginPassword").value;
+
+
+        const errorBox =
+            document.getElementById("loginError");
+
+
+        errorBox.style.display = "none";
+
+
+        // Check empty fields
+
+        if (!email || !password) {
+
+            errorBox.textContent =
+                "Please enter your email and password.";
+
+            errorBox.style.display =
+                "block";
+
+            return;
+
+        }
+
+
+        try {
+
+            const response =
+                await fetch("/api/auth/login", {
+
+                    method: "POST",
+
+                    headers: {
+
+                        "Content-Type":
+                            "application/json"
+
+                    },
+
+                    body: JSON.stringify({
+
+                        email: email,
+
+                        password: password
+
+                    })
+
+                });
+
+
+            const result =
+                await response.json();
+
+
+            if (!response.ok) {
+
+                errorBox.textContent =
+                    result.detail ||
+                    "Invalid email or password.";
+
+                errorBox.style.display =
+                    "block";
+
+                return;
+
+            }
+
+
+            // Store user information
+
+            if (result.user_id) {
+
+                localStorage.setItem(
+                    "user_id",
+                    result.user_id
+                );
+
+            }
+
+
+            if (result.username) {
+
+                localStorage.setItem(
+                    "username",
+                    result.username
+                );
+
+            }
+
+
+            localStorage.setItem(
+                "user_email",
+                result.email || email
+            );
+
+
+            // Redirect to user chat
+
+            window.location.href =
+                "/user_chat.html";
+
+        }
+
+
+        catch (error) {
+
+            errorBox.textContent =
+                "Unable to connect to the server.";
+
+            errorBox.style.display =
+                "block";
+
+        }
+
+    }
+
+</script>
+
+
+</body>
+
+</html>
