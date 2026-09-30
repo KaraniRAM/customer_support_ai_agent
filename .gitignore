@@ -1,0 +1,6 @@
+#anthropic key
+.env
+**/.env
+# ChromaDB
+# ChromaDB
+chroma_db/

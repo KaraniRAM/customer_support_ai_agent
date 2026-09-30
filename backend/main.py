@@ -1,8 +1,9 @@
+
 # ---------------------------------------------------------
 # IMPORTS
 # ---------------------------------------------------------
 
-from fastapi import FastAPI, HTTPException, UploadFile, File, Form
+from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Header
 from fastapi.responses import FileResponse, Response, HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pathlib import Path
@@ -11,8 +12,41 @@ from pydantic import BaseModel
 import psycopg2
 import json
 import base64
+import os
+import re
+import secrets
+import hashlib
+import math
 
 from datetime import datetime, date
+from dotenv import load_dotenv
+
+load_dotenv()
+
+
+# ---------------------------------------------------------
+# OPTIONAL RAG IMPORTS
+# ---------------------------------------------------------
+
+try:
+    import chromadb
+except Exception:
+    chromadb = None
+
+try:
+    from pypdf import PdfReader
+except Exception:
+    PdfReader = None
+
+try:
+    from sentence_transformers import SentenceTransformer
+except Exception:
+    SentenceTransformer = None
+
+try:
+    import anthropic
+except Exception:
+    anthropic = None
 
 
 # ---------------------------------------------------------
@@ -29,6 +63,8 @@ app = FastAPI()
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 FRONTEND_DIR = BASE_DIR / "Frontend"
+
+CHROMA_DIR = BASE_DIR / "chroma_db"
 
 
 # ---------------------------------------------------------
@@ -51,17 +87,60 @@ app.add_middleware(
 def get_db_connection():
 
     return psycopg2.connect(
-
         host="localhost",
-
         port="5432",
-
         database="bc",
-
         user="postgres",
-
         password="Karani@2006"
     )
+
+
+# ---------------------------------------------------------
+# APPLICATION SETTINGS
+# ---------------------------------------------------------
+
+CONVERSATION_INACTIVITY_MINUTES = 30
+
+LLM_MODEL = os.getenv(
+    "LLM_MODEL",
+    "claude-sonnet-4-6"
+)
+
+ANTHROPIC_API_KEY = os.getenv(
+    "ANTHROPIC_API_KEY",
+    ""
+)
+
+CHROMA_COLLECTION_NAME = os.getenv(
+    "CHROMA_COLLECTION_NAME",
+    "blencekart_documents"
+)
+
+EMBEDDING_MODEL_NAME = os.getenv(
+    "EMBEDDING_MODEL",
+    "all-MiniLM-L6-v2"
+)
+
+
+# ---------------------------------------------------------
+# USER SESSION STORAGE
+# ---------------------------------------------------------
+
+USER_SESSIONS = {}
+
+
+# ---------------------------------------------------------
+# RAG GLOBAL OBJECTS
+# ---------------------------------------------------------
+
+_chroma_client = None
+_chroma_collection = None
+_embedding_model = None
+
+
+# =========================================================
+# PYDANTIC MODELS
+# =========================================================
 
 
 # ---------------------------------------------------------
@@ -100,6 +179,28 @@ class UserLogin(BaseModel):
 
 
 # ---------------------------------------------------------
+# CHAT MESSAGE DATA
+# ---------------------------------------------------------
+
+class ChatMessage(BaseModel):
+
+    message: str
+
+    conversation_id: int | None = None
+
+    user_id: int | None = None
+
+
+# ---------------------------------------------------------
+# NEW CONVERSATION DATA
+# ---------------------------------------------------------
+
+class NewConversation(BaseModel):
+
+    title: str | None = "New Conversation"
+
+
+# ---------------------------------------------------------
 # GENERATED FEEDBACK DATA
 # ---------------------------------------------------------
 
@@ -114,9 +215,1141 @@ class GeneratedFeedback(BaseModel):
     feedback_text: str
 
 
+# =========================================================
+# SESSION HELPERS
+# =========================================================
+
+
+def create_user_session(user_id):
+
+    token = secrets.token_urlsafe(32)
+
+    USER_SESSIONS[token] = {
+        "user_id": user_id,
+        "created_at": datetime.now()
+    }
+
+    return token
+
+
+def get_authenticated_user(
+    authorization=None,
+    user_id=None
+):
+
+    authenticated_user_id = None
+
+    # -----------------------------------------------------
+    # AUTHENTICATE USING BEARER SESSION TOKEN
+    # -----------------------------------------------------
+
+    if authorization:
+
+        if authorization.lower().startswith("bearer "):
+
+            token = authorization[7:].strip()
+
+            session = USER_SESSIONS.get(token)
+
+            if session:
+
+                authenticated_user_id = session["user_id"]
+
+    # -----------------------------------------------------
+    # EXISTING FALLBACK PRESERVED
+    # -----------------------------------------------------
+
+    if authenticated_user_id is None and user_id is not None:
+
+        authenticated_user_id = user_id
+
+    if authenticated_user_id is None:
+
+        raise HTTPException(
+            status_code=401,
+            detail="User authentication required"
+        )
+
+    connection = None
+    cursor = None
+
+    try:
+
+        connection = get_db_connection()
+
+        cursor = connection.cursor()
+
+        cursor.execute(
+            """
+            SELECT
+                user_id,
+                name,
+                email,
+                active_status
+            FROM user_access
+            WHERE user_id = %s
+            """,
+            (authenticated_user_id,)
+        )
+
+        user = cursor.fetchone()
+
+        if not user:
+
+            raise HTTPException(
+                status_code=404,
+                detail="User not found"
+            )
+
+        if not user[3]:
+
+            raise HTTPException(
+                status_code=403,
+                detail="User account is inactive"
+            )
+
+        return {
+            "user_id": user[0],
+            "name": user[1],
+            "email": user[2]
+        }
+
+    finally:
+
+        if cursor:
+            cursor.close()
+
+        if connection:
+            connection.close()
+
+
+# =========================================================
+# CHROMADB HELPERS
+# =========================================================
+
+
+def get_chroma_collection():
+
+    global _chroma_client
+    global _chroma_collection
+
+    if chromadb is None:
+
+        raise RuntimeError(
+            "ChromaDB is not installed"
+        )
+
+    CHROMA_DIR.mkdir(
+        parents=True,
+        exist_ok=True
+    )
+
+    if _chroma_client is None:
+
+        _chroma_client = chromadb.PersistentClient(
+            path=str(CHROMA_DIR)
+        )
+
+    if _chroma_collection is None:
+
+        _chroma_collection = (
+            _chroma_client.get_or_create_collection(
+                name=CHROMA_COLLECTION_NAME
+            )
+        )
+
+    return _chroma_collection
+
+
+def get_embedding_model():
+
+    global _embedding_model
+
+    if SentenceTransformer is None:
+
+        raise RuntimeError(
+            "sentence-transformers is not installed"
+        )
+
+    if _embedding_model is None:
+
+        _embedding_model = SentenceTransformer(
+            EMBEDDING_MODEL_NAME
+        )
+
+    return _embedding_model
+
+
+def generate_embeddings(texts):
+
+    if not texts:
+
+        return []
+
+    model = get_embedding_model()
+
+    embeddings = model.encode(
+        texts,
+        normalize_embeddings=True
+    )
+
+    return [
+        embedding.tolist()
+        for embedding in embeddings
+    ]
+
+
+def delete_document(document_id):
+
+    try:
+
+        collection = get_chroma_collection()
+
+        collection.delete(
+            where={
+                "document_id": int(document_id)
+            }
+        )
+
+        return True
+
+    except Exception as error:
+
+        print(
+            "CHROMADB DELETE ERROR:",
+            error
+        )
+
+        raise RuntimeError(
+            "Unable to remove document from knowledge base"
+        )
+
+
+def add_document_to_chromadb(
+    document_id,
+    document_name,
+    pages
+):
+
+    if not pages:
+
+        return 0
+
+    collection = get_chroma_collection()
+
+    chunks = []
+
+    chunk_size = 1000
+
+    overlap = 150
+
+    for page_number, page_text in pages:
+
+        if not page_text:
+
+            continue
+
+        page_text = re.sub(
+            r"\s+",
+            " ",
+            page_text
+        ).strip()
+
+        if not page_text:
+
+            continue
+
+        start = 0
+
+        local_chunk_number = 0
+
+        while start < len(page_text):
+
+            end = min(
+                start + chunk_size,
+                len(page_text)
+            )
+
+            chunk_text = page_text[start:end].strip()
+
+            if chunk_text:
+
+                chunks.append({
+                    "text": chunk_text,
+                    "page_number": page_number,
+                    "chunk_number": local_chunk_number
+                })
+
+            if end >= len(page_text):
+
+                break
+
+            start = max(
+                end - overlap,
+                start + 1
+            )
+
+            local_chunk_number += 1
+
+    if not chunks:
+
+        return 0
+
+    texts = [
+        item["text"]
+        for item in chunks
+    ]
+
+    embeddings = generate_embeddings(
+        texts
+    )
+
+    ids = []
+
+    documents = []
+
+    metadatas = []
+
+    for index, item in enumerate(chunks):
+
+        chunk_id = (
+            f"document_{document_id}_"
+            f"chunk_{index + 1}"
+        )
+
+        ids.append(chunk_id)
+
+        documents.append(
+            item["text"]
+        )
+
+        metadatas.append({
+
+            "document_id": int(document_id),
+
+            "document_name": str(
+                document_name
+            ),
+
+            "chunk_id": chunk_id,
+
+            "page_number": int(
+                item["page_number"]
+            )
+
+        })
+
+    collection.add(
+        ids=ids,
+        documents=documents,
+        embeddings=embeddings,
+        metadatas=metadatas
+    )
+
+    return len(chunks)
+
+
+def retrieve_relevant_chunks(
+    query,
+    number_of_results=6
+):
+
+    collection = get_chroma_collection()
+
+    query_embedding = generate_embeddings(
+        [query]
+    )[0]
+
+    count = collection.count()
+
+    if count == 0:
+
+        return []
+
+    number_of_results = min(
+        number_of_results,
+        count
+    )
+
+    result = collection.query(
+        query_embeddings=[
+            query_embedding
+        ],
+        n_results=number_of_results
+    )
+
+    documents = (
+        result.get("documents", [[]])[0]
+        if result.get("documents")
+        else []
+    )
+
+    metadatas = (
+        result.get("metadatas", [[]])[0]
+        if result.get("metadatas")
+        else []
+    )
+
+    distances = (
+        result.get("distances", [[]])[0]
+        if result.get("distances")
+        else []
+    )
+
+    retrieved = []
+
+    for index, document in enumerate(documents):
+
+        metadata = (
+            metadatas[index]
+            if index < len(metadatas)
+            else {}
+        )
+
+        distance = (
+            distances[index]
+            if index < len(distances)
+            else None
+        )
+
+        retrieved.append({
+
+            "text": document,
+
+            "metadata": metadata,
+
+            "distance": distance
+
+        })
+
+    return retrieved
+
+
+# =========================================================
+# AGENT 1 - QUERY UNDERSTANDING AGENT
+# =========================================================
+
+
+def query_understanding_agent(
+    original_question
+):
+
+    cleaned_question = re.sub(
+        r"\s+",
+        " ",
+        original_question
+    ).strip()
+
+    lowered = cleaned_question.lower()
+
+    if any(
+        word in lowered
+        for word in [
+            "what",
+            "who",
+            "which",
+            "where",
+            "when"
+        ]
+    ):
+
+        intent = "information_request"
+
+    elif any(
+        word in lowered
+        for word in [
+            "how",
+            "steps",
+            "process"
+        ]
+    ):
+
+        intent = "how_to_request"
+
+    elif any(
+        word in lowered
+        for word in [
+            "why",
+            "reason"
+        ]
+    ):
+
+        intent = "explanation_request"
+
+    else:
+
+        intent = "general_request"
+
+    return {
+
+        "original_question":
+            original_question,
+
+        "cleaned_question":
+            cleaned_question,
+
+        "intent":
+            intent
+
+    }
+
+
+# =========================================================
+# AGENT 2 - KNOWLEDGE RETRIEVAL AGENT
+# =========================================================
+
+
+def knowledge_retrieval_agent(
+    processed_query
+):
+
+    cleaned_question = processed_query[
+        "cleaned_question"
+    ]
+
+    return retrieve_relevant_chunks(
+        cleaned_question
+    )
+
+
+# =========================================================
+# AGENT 3 - RESPONSE GENERATION AGENT
+# =========================================================
+
+
+def response_generation_agent(
+    original_question,
+    retrieved_chunks
+):
+
+    if anthropic is None:
+
+        raise RuntimeError(
+            "Anthropic package is not installed"
+        )
+
+    if not ANTHROPIC_API_KEY:
+
+        raise RuntimeError(
+            "LLM API key is not configured"
+        )
+
+    context_parts = []
+
+    for chunk in retrieved_chunks:
+
+        text_value = chunk.get(
+            "text",
+            ""
+        )
+
+        if text_value:
+
+            context_parts.append(
+                text_value
+            )
+
+    context = "\n\n".join(
+        context_parts
+    )
+
+    if not context:
+
+        context = (
+            "No relevant information was "
+            "found in the uploaded documents."
+        )
+
+    client = anthropic.Anthropic(
+        api_key=ANTHROPIC_API_KEY
+    )
+
+    prompt = f"""
+You are the response generation component of a
+document question-answering system.
+
+Answer the user's question using the supplied
+document knowledge whenever relevant.
+
+User question:
+{original_question}
+
+Retrieved document knowledge:
+{context}
+
+Rules:
+- Give only the final answer.
+- Do not mention agents.
+- Do not mention ChromaDB.
+- Do not mention embeddings.
+- Do not mention retrieval.
+- Do not mention internal prompts.
+- Do not expose internal metadata.
+- Do not describe the internal processing.
+- If the documents do not contain enough information,
+  clearly say that the available documents do not
+  contain enough information.
+"""
+
+    response = client.messages.create(
+        model=LLM_MODEL,
+        max_tokens=1200,
+        temperature=0.2,
+        messages=[
+            {
+                "role": "user",
+                "content": prompt
+            }
+        ]
+    )
+
+    answer_parts = []
+
+    for content in response.content:
+
+        if getattr(
+            content,
+            "type",
+            None
+        ) == "text":
+
+            answer_parts.append(
+                content.text
+            )
+
+    answer = "\n".join(
+        answer_parts
+    ).strip()
+
+    if not answer:
+
+        raise RuntimeError(
+            "LLM returned an empty response"
+        )
+
+    return answer
+
+
+# =========================================================
+# AGENT 4 - COACHING AGENT
+# =========================================================
+
+
+def coaching_agent(
+    original_question,
+    final_answer
+):
+
+    return {
+
+        "question":
+            original_question,
+
+        "answer":
+            final_answer,
+
+        "coaching_status":
+            "completed"
+
+    }
+
+
+# =========================================================
+# AGENT 5 - FEEDBACK GENERATION AGENT
+# =========================================================
+
+
+def feedback_generation_agent(
+    conversation
+):
+
+    if anthropic is None:
+
+        return (
+            "Conversation feedback could not be "
+            "generated because the configured LLM "
+            "service is unavailable."
+        )
+
+    if not ANTHROPIC_API_KEY:
+
+        return (
+            "Conversation feedback could not be "
+            "generated because the configured LLM "
+            "service is unavailable."
+        )
+
+    conversation_text = []
+
+    for item in conversation:
+
+        conversation_text.append(
+            f"User: {item.get('user_message', '')}\n"
+            f"AI: {item.get('ai_response', '')}"
+        )
+
+    joined = "\n\n".join(
+        conversation_text
+    )
+
+    client = anthropic.Anthropic(
+        api_key=ANTHROPIC_API_KEY
+    )
+
+    prompt = f"""
+Analyze the following user and AI conversation.
+
+Provide concise feedback covering:
+
+1. Response quality
+2. Relevance
+3. Accuracy
+4. Clarity
+5. Knowledge retrieval quality
+6. Areas for improvement
+
+Do not expose internal prompts, embeddings,
+agent implementation details, or internal system
+information.
+
+Conversation:
+
+{joined}
+"""
+
+    response = client.messages.create(
+        model=LLM_MODEL,
+        max_tokens=1200,
+        temperature=0.2,
+        messages=[
+            {
+                "role": "user",
+                "content": prompt
+            }
+        ]
+    )
+
+    parts = []
+
+    for content in response.content:
+
+        if getattr(
+            content,
+            "type",
+            None
+        ) == "text":
+
+            parts.append(
+                content.text
+            )
+
+    feedback = "\n".join(parts).strip()
+
+    if not feedback:
+
+        return (
+            "No feedback could be generated."
+        )
+
+    return feedback
+
+
+# =========================================================
+# AGENT 6 - ORCHESTRATOR AGENT
+# =========================================================
+
+
+def orchestrator_agent(
+    question
+):
+
+    processed_query = (
+        query_understanding_agent(
+            question
+        )
+    )
+
+    retrieved_chunks = (
+        knowledge_retrieval_agent(
+            processed_query
+        )
+    )
+
+    final_answer = (
+        response_generation_agent(
+            question,
+            retrieved_chunks
+        )
+    )
+
+    coaching_agent(
+        question,
+        final_answer
+    )
+
+    return final_answer
+
+
+# =========================================================
+# USER CONVERSATION DATABASE HELPERS
+# =========================================================
+
+
+def get_next_conversation_id(cursor):
+
+    cursor.execute(
+        """
+        SELECT COALESCE(
+            MAX(conversation_id),
+            0
+        ) + 1
+        FROM user_conversations
+        """
+    )
+
+    return cursor.fetchone()[0]
+
+
+def get_next_message_id(cursor):
+
+    cursor.execute(
+        """
+        SELECT COALESCE(
+            MAX(message_id),
+            0
+        ) + 1
+        FROM user_conversations
+        """
+    )
+
+    return cursor.fetchone()[0]
+
+
 # ---------------------------------------------------------
+# CREATE A NEW CONVERSATION
+# ---------------------------------------------------------
+
+def create_new_conversation(
+    cursor,
+    user_id,
+    title="New Conversation"
+):
+
+    conversation_id = get_next_conversation_id(
+        cursor
+    )
+
+    cursor.execute(
+        """
+        INSERT INTO user_conversations
+        (
+            conversation_id,
+            user_id,
+            title,
+            created_at,
+            updated_at,
+            active_status,
+            message_id,
+            user_message,
+            ai_response,
+            message_created_at
+        )
+        VALUES
+        (
+            %s,
+            %s,
+            %s,
+            CURRENT_TIMESTAMP,
+            CURRENT_TIMESTAMP,
+            TRUE,
+            NULL,
+            NULL,
+            NULL,
+            NULL
+        )
+        """,
+        (
+            conversation_id,
+            user_id,
+            title
+        )
+    )
+
+    return conversation_id
+
+
+# ---------------------------------------------------------
+# GET OR CREATE CONVERSATION FOR CHAT
+# ---------------------------------------------------------
+
+def get_or_create_conversation(
+    cursor,
+    user_id,
+    conversation_id=None
+):
+
+    if conversation_id is not None:
+
+        cursor.execute(
+            """
+            SELECT
+                conversation_id,
+                user_id,
+                title,
+                active_status
+            FROM user_conversations
+            WHERE conversation_id = %s
+            AND user_id = %s
+            ORDER BY message_id ASC NULLS FIRST
+            LIMIT 1
+            """,
+            (
+                conversation_id,
+                user_id
+            )
+        )
+
+        existing = cursor.fetchone()
+
+        if not existing:
+
+            raise HTTPException(
+                status_code=404,
+                detail="Invalid conversation"
+            )
+
+        if existing[3] is False:
+
+            raise HTTPException(
+                status_code=400,
+                detail="Conversation is inactive"
+            )
+
+        cursor.execute(
+            """
+            UPDATE user_conversations
+            SET
+                updated_at = CURRENT_TIMESTAMP,
+                active_status = TRUE
+            WHERE conversation_id = %s
+            AND user_id = %s
+            """,
+            (
+                conversation_id,
+                user_id
+            )
+        )
+
+        return conversation_id
+
+    conversation_id = (
+        get_next_conversation_id(
+            cursor
+        )
+    )
+
+    return conversation_id
+
+
+# ---------------------------------------------------------
+# STORE CHAT MESSAGE
+# ---------------------------------------------------------
+
+def store_chat_message(
+    cursor,
+    user_id,
+    conversation_id,
+    user_message,
+    ai_response
+):
+
+    message_id = get_next_message_id(
+        cursor
+    )
+
+    title = (
+        user_message[:100]
+        if user_message
+        else "New Conversation"
+    )
+
+    # -----------------------------------------------------
+    # CHECK WHETHER THIS IS THE FIRST MESSAGE
+    # -----------------------------------------------------
+
+    cursor.execute(
+        """
+        SELECT COUNT(*)
+        FROM user_conversations
+        WHERE conversation_id = %s
+        AND user_id = %s
+        AND message_id IS NOT NULL
+        """,
+        (
+            conversation_id,
+            user_id
+        )
+    )
+
+    message_count = cursor.fetchone()[0]
+
+    if message_count == 0:
+
+        # -------------------------------------------------
+        # FILL THE EMPTY NEW-CONVERSATION ROW
+        # -------------------------------------------------
+
+        cursor.execute(
+            """
+            UPDATE user_conversations
+            SET
+                message_id = %s,
+                title = %s,
+                user_message = %s,
+                ai_response = %s,
+                updated_at = CURRENT_TIMESTAMP,
+                active_status = TRUE,
+                message_created_at = CURRENT_TIMESTAMP
+            WHERE conversation_id = %s
+            AND user_id = %s
+            AND message_id IS NULL
+            """,
+            (
+                message_id,
+                title,
+                user_message,
+                ai_response,
+                conversation_id,
+                user_id
+            )
+        )
+
+        if cursor.rowcount == 0:
+
+            cursor.execute(
+                """
+                INSERT INTO user_conversations
+                (
+                    message_id,
+                    conversation_id,
+                    user_id,
+                    title,
+                    user_message,
+                    ai_response,
+                    created_at,
+                    updated_at,
+                    active_status,
+                    message_created_at
+                )
+                VALUES
+                (
+                    %s,
+                    %s,
+                    %s,
+                    %s,
+                    %s,
+                    %s,
+                    CURRENT_TIMESTAMP,
+                    CURRENT_TIMESTAMP,
+                    TRUE,
+                    CURRENT_TIMESTAMP
+                )
+                """,
+                (
+                    message_id,
+                    conversation_id,
+                    user_id,
+                    title,
+                    user_message,
+                    ai_response
+                )
+            )
+
+    else:
+
+        # -------------------------------------------------
+        # ADD NEXT MESSAGE TO EXISTING CONVERSATION
+        # -------------------------------------------------
+
+        cursor.execute(
+            """
+            INSERT INTO user_conversations
+            (
+                message_id,
+                conversation_id,
+                user_id,
+                title,
+                user_message,
+                ai_response,
+                created_at,
+                updated_at,
+                active_status,
+                message_created_at
+            )
+            VALUES
+            (
+                %s,
+                %s,
+                %s,
+                %s,
+                %s,
+                %s,
+                CURRENT_TIMESTAMP,
+                CURRENT_TIMESTAMP,
+                TRUE,
+                CURRENT_TIMESTAMP
+            )
+            """,
+            (
+                message_id,
+                conversation_id,
+                user_id,
+                title,
+                user_message,
+                ai_response
+            )
+        )
+
+        # -------------------------------------------------
+        # KEEP CONVERSATION TITLE FROM CHANGING
+        # -------------------------------------------------
+
+        cursor.execute(
+            """
+            UPDATE user_conversations
+            SET
+                updated_at = CURRENT_TIMESTAMP,
+                active_status = TRUE
+            WHERE conversation_id = %s
+            AND user_id = %s
+            """,
+            (
+                conversation_id,
+                user_id
+            )
+        )
+
+    # -----------------------------------------------------
+    # UPDATE USER LAST ACTIVITY
+    # -----------------------------------------------------
+
+    cursor.execute(
+        """
+        UPDATE user_access
+        SET
+            last_activity = CURRENT_TIMESTAMP
+        WHERE user_id = %s
+        """,
+        (user_id,)
+    )
+
+    return message_id
+
+
+# =========================================================
 # HOME PAGE
-# ---------------------------------------------------------
+# =========================================================
+
 
 @app.get("/")
 def home():
@@ -126,9 +1359,10 @@ def home():
     )
 
 
-# ---------------------------------------------------------
+# =========================================================
 # INDEX.HTML PAGE
-# ---------------------------------------------------------
+# =========================================================
+
 
 @app.get("/index.html")
 def index():
@@ -138,9 +1372,10 @@ def index():
     )
 
 
-# ---------------------------------------------------------
+# =========================================================
 # ADMIN LOGIN PAGE
-# ---------------------------------------------------------
+# =========================================================
+
 
 @app.get("/ad_login.html")
 def admin_login_page():
@@ -150,9 +1385,10 @@ def admin_login_page():
     )
 
 
-# ---------------------------------------------------------
+# =========================================================
 # ADMIN DASHBOARD PAGE
-# ---------------------------------------------------------
+# =========================================================
+
 
 @app.get("/ad_dashboard.html")
 def admin_dashboard_html():
@@ -170,9 +1406,10 @@ def admin_dashboard():
     )
 
 
-# ---------------------------------------------------------
+# =========================================================
 # RAG DOCUMENTATION PAGE
-# ---------------------------------------------------------
+# =========================================================
+
 
 @app.get("/rag_document.html")
 def rag_document():
@@ -182,15 +1419,29 @@ def rag_document():
     )
 
 
-# ---------------------------------------------------------
+# =========================================================
 # USER LOGIN PAGE
-# ---------------------------------------------------------
+# =========================================================
+
 
 @app.get("/user_login.html")
 async def user_login():
 
     return FileResponse(
         FRONTEND_DIR / "user_login.html"
+    )
+
+
+# =========================================================
+# USER CHAT PAGE
+# =========================================================
+
+
+@app.get("/user_chat.html")
+async def user_chat():
+
+    return FileResponse(
+        FRONTEND_DIR / "user_chat.html"
     )
 
 
@@ -202,6 +1453,7 @@ async def user_login():
 # ---------------------------------------------------------
 # USER SIGNUP API
 # ---------------------------------------------------------
+
 
 @app.post("/api/auth/register")
 def user_register(data: UserRegister):
@@ -215,7 +1467,6 @@ def user_register(data: UserRegister):
 
         cursor = connection.cursor()
 
-
         cursor.execute(
             """
             SELECT user_id
@@ -227,14 +1478,12 @@ def user_register(data: UserRegister):
 
         existing_user = cursor.fetchone()
 
-
         if existing_user:
 
             raise HTTPException(
                 status_code=400,
                 detail="Email already registered"
             )
-
 
         cursor.execute(
             """
@@ -259,36 +1508,50 @@ def user_register(data: UserRegister):
             )
         )
 
-
         user = cursor.fetchone()
-
 
         connection.commit()
 
+        token = create_user_session(
+            user[0]
+        )
 
         return {
 
             "success": True,
 
-            "message": "Account created successfully",
+            "message":
+                "Account created successfully",
 
-            "user_id": user[0],
+            "user_id":
+                user[0],
 
-            "name": user[1],
+            "name":
+                user[1],
 
-            "email": user[2]
+            "email":
+                user[2],
+
+            "username":
+                user[1],
+
+            "access_token":
+                token,
+
+            "token_type":
+                "bearer",
+
+            "redirect":
+                "/user_chat.html"
 
         }
-
 
     except HTTPException:
 
         if connection:
-
             connection.rollback()
 
         raise
-
 
     except Exception as error:
 
@@ -298,7 +1561,6 @@ def user_register(data: UserRegister):
         )
 
         if connection:
-
             connection.rollback()
 
         raise HTTPException(
@@ -306,21 +1568,19 @@ def user_register(data: UserRegister):
             detail="Unable to create account"
         )
 
-
     finally:
 
         if cursor:
-
             cursor.close()
 
         if connection:
-
             connection.close()
 
 
 # ---------------------------------------------------------
 # USER LOGIN API
 # ---------------------------------------------------------
+
 
 @app.post("/api/auth/login")
 def user_login_api(data: UserLogin):
@@ -333,7 +1593,6 @@ def user_login_api(data: UserLogin):
         connection = get_db_connection()
 
         cursor = connection.cursor()
-
 
         cursor.execute(
             """
@@ -349,9 +1608,7 @@ def user_login_api(data: UserLogin):
             (data.email,)
         )
 
-
         user = cursor.fetchone()
-
 
         if not user:
 
@@ -359,7 +1616,6 @@ def user_login_api(data: UserLogin):
                 status_code=401,
                 detail="Invalid email or password"
             )
-
 
         user_id = user[0]
 
@@ -371,7 +1627,6 @@ def user_login_api(data: UserLogin):
 
         active_status = user[4]
 
-
         if not active_status:
 
             raise HTTPException(
@@ -379,14 +1634,12 @@ def user_login_api(data: UserLogin):
                 detail="User account is inactive"
             )
 
-
         if data.password != password:
 
             raise HTTPException(
                 status_code=401,
                 detail="Invalid email or password"
             )
-
 
         cursor.execute(
             """
@@ -399,35 +1652,48 @@ def user_login_api(data: UserLogin):
             (user_id,)
         )
 
-
         connection.commit()
 
+        token = create_user_session(
+            user_id
+        )
 
         return {
 
             "success": True,
 
-            "message": "User login successful",
+            "message":
+                "User login successful",
 
-            "user_id": user_id,
+            "user_id":
+                user_id,
 
-            "name": name,
+            "name":
+                name,
 
-            "username": name,
+            "username":
+                name,
 
-            "email": email
+            "email":
+                email,
+
+            "access_token":
+                token,
+
+            "token_type":
+                "bearer",
+
+            "redirect":
+                "/user_chat.html"
 
         }
-
 
     except HTTPException:
 
         if connection:
-
             connection.rollback()
 
         raise
-
 
     except Exception as error:
 
@@ -437,7 +1703,6 @@ def user_login_api(data: UserLogin):
         )
 
         if connection:
-
             connection.rollback()
 
         raise HTTPException(
@@ -445,15 +1710,755 @@ def user_login_api(data: UserLogin):
             detail="Unable to login"
         )
 
+    finally:
+
+        if cursor:
+            cursor.close()
+
+        if connection:
+            connection.close()
+
+
+# ---------------------------------------------------------
+# USER LOGOUT API
+# ---------------------------------------------------------
+
+
+@app.post("/api/auth/logout")
+def user_logout(
+    authorization: str | None = Header(
+        default=None
+    )
+):
+
+    if authorization:
+
+        if authorization.lower().startswith(
+            "bearer "
+        ):
+
+            token = authorization[7:].strip()
+
+            USER_SESSIONS.pop(
+                token,
+                None
+            )
+
+    return {
+
+        "success": True,
+
+        "message":
+            "User logged out successfully",
+
+        "redirect":
+            "/index.html"
+
+    }
+
+
+# ---------------------------------------------------------
+# USER CURRENT SESSION
+# ---------------------------------------------------------
+
+
+@app.get("/api/auth/me")
+def user_me(
+    authorization: str | None = Header(
+        default=None
+    ),
+    user_id: int | None = None
+):
+
+    user = get_authenticated_user(
+        authorization,
+        user_id
+    )
+
+    return {
+
+        "success": True,
+
+        "user_id":
+            user["user_id"],
+
+        "name":
+            user["name"],
+
+        "email":
+            user["email"]
+
+    }
+
+
+# =========================================================
+# USER CONVERSATIONS
+# =========================================================
+
+
+# ---------------------------------------------------------
+# CREATE NEW CONVERSATION / NEW CHAT
+# ---------------------------------------------------------
+
+
+@app.post("/api/conversations")
+def create_conversation(
+    data: NewConversation,
+    authorization: str | None = Header(
+        default=None
+    )
+):
+
+    connection = None
+    cursor = None
+
+    try:
+
+        # -------------------------------------------------
+        # AUTHENTICATE USER
+        # -------------------------------------------------
+
+        user = get_authenticated_user(
+            authorization
+        )
+
+        user_id = user["user_id"]
+
+        connection = get_db_connection()
+
+        cursor = connection.cursor()
+
+        title = (
+            data.title.strip()
+            if data.title
+            else "New Conversation"
+        )
+
+        if not title:
+
+            title = "New Conversation"
+
+        # -------------------------------------------------
+        # CREATE NEW CONVERSATION ID
+        # -------------------------------------------------
+
+        conversation_id = (
+            create_new_conversation(
+                cursor,
+                user_id,
+                title
+            )
+        )
+
+        connection.commit()
+
+        return {
+
+            "success": True,
+
+            "message":
+                "New conversation created successfully",
+
+            "conversation_id":
+                conversation_id,
+
+            "user_id":
+                user_id,
+
+            "title":
+                title,
+
+            "created_at":
+                datetime.now().isoformat(),
+
+            "active_status":
+                True
+
+        }
+
+    except HTTPException:
+
+        if connection:
+            connection.rollback()
+
+        raise
+
+    except Exception as error:
+
+        print(
+            "CREATE CONVERSATION ERROR:",
+            error
+        )
+
+        if connection:
+            connection.rollback()
+
+        raise HTTPException(
+            status_code=500,
+            detail="Unable to create conversation"
+        )
 
     finally:
 
         if cursor:
-
             cursor.close()
 
         if connection:
+            connection.close()
 
+
+# ---------------------------------------------------------
+# GET CURRENT USER CONVERSATIONS
+# ---------------------------------------------------------
+
+
+@app.get("/api/conversations")
+def get_current_user_conversations(
+    authorization: str | None = Header(
+        default=None
+    )
+):
+
+    connection = None
+    cursor = None
+
+    try:
+
+        # -------------------------------------------------
+        # AUTHENTICATE USER
+        # -------------------------------------------------
+
+        user = get_authenticated_user(
+            authorization
+        )
+
+        user_id = user["user_id"]
+
+        connection = get_db_connection()
+
+        cursor = connection.cursor()
+
+        cursor.execute(
+            """
+            SELECT
+                conversation_id,
+                user_id,
+                title,
+                MIN(created_at) AS created_at,
+                MAX(updated_at) AS updated_at,
+                BOOL_OR(active_status) AS active_status,
+                COUNT(message_id) AS message_count,
+                MAX(message_created_at) AS last_message_at
+
+            FROM user_conversations
+
+            WHERE user_id = %s
+
+            GROUP BY
+                conversation_id,
+                user_id,
+                title
+
+            ORDER BY
+                MAX(updated_at) DESC NULLS LAST,
+                MIN(created_at) DESC NULLS LAST
+            """,
+            (user_id,)
+        )
+
+        conversations = cursor.fetchall()
+
+        result = []
+
+        for conversation in conversations:
+
+            result.append({
+
+                "conversation_id":
+                    conversation[0],
+
+                "user_id":
+                    conversation[1],
+
+                "title":
+                    conversation[2],
+
+                "created_at":
+                    conversation[3].isoformat()
+                    if conversation[3]
+                    else None,
+
+                "updated_at":
+                    conversation[4].isoformat()
+                    if conversation[4]
+                    else None,
+
+                "active_status":
+                    conversation[5],
+
+                "message_count":
+                    conversation[6],
+
+                "last_message_at":
+                    conversation[7].isoformat()
+                    if conversation[7]
+                    else None
+
+            })
+
+        return {
+
+            "success": True,
+
+            "user_id":
+                user_id,
+
+            "name":
+                user["name"],
+
+            "email":
+                user["email"],
+
+            "conversations":
+                result
+
+        }
+
+    except HTTPException:
+
+        raise
+
+    except Exception as error:
+
+        print(
+            "GET CURRENT USER CONVERSATIONS ERROR:",
+            error
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail="Unable to get conversations"
+        )
+
+    finally:
+
+        if cursor:
+            cursor.close()
+
+        if connection:
+            connection.close()
+
+
+# ---------------------------------------------------------
+# GET ONE USER CONVERSATION
+# ---------------------------------------------------------
+
+
+@app.get(
+    "/api/conversations/{conversation_id}"
+)
+def get_current_user_conversation(
+    conversation_id: int,
+    authorization: str | None = Header(
+        default=None
+    )
+):
+
+    connection = None
+    cursor = None
+
+    try:
+
+        # -------------------------------------------------
+        # AUTHENTICATE USER
+        # -------------------------------------------------
+
+        user = get_authenticated_user(
+            authorization
+        )
+
+        user_id = user["user_id"]
+
+        connection = get_db_connection()
+
+        cursor = connection.cursor()
+
+        # -------------------------------------------------
+        # IMPORTANT:
+        # CONVERSATION MUST BELONG TO AUTHENTICATED USER
+        # -------------------------------------------------
+
+        cursor.execute(
+            """
+            SELECT
+                conversation_id,
+                user_id,
+                title,
+                MIN(created_at) AS created_at,
+                MAX(updated_at) AS updated_at,
+                BOOL_OR(active_status) AS active_status
+
+            FROM user_conversations
+
+            WHERE conversation_id = %s
+            AND user_id = %s
+
+            GROUP BY
+                conversation_id,
+                user_id,
+                title
+            """,
+            (
+                conversation_id,
+                user_id
+            )
+        )
+
+        conversation = cursor.fetchone()
+
+        if not conversation:
+
+            raise HTTPException(
+                status_code=404,
+                detail="Conversation not found"
+            )
+
+        if conversation[5] is False:
+
+            raise HTTPException(
+                status_code=400,
+                detail="Conversation is inactive"
+            )
+
+        # -------------------------------------------------
+        # GET MESSAGES
+        # -------------------------------------------------
+
+        cursor.execute(
+            """
+            SELECT
+                message_id,
+                conversation_id,
+                user_id,
+                user_message,
+                ai_response,
+                message_created_at
+
+            FROM user_conversations
+
+            WHERE conversation_id = %s
+            AND user_id = %s
+            AND message_id IS NOT NULL
+
+            ORDER BY
+                message_created_at ASC,
+                message_id ASC
+            """,
+            (
+                conversation_id,
+                user_id
+            )
+        )
+
+        messages = cursor.fetchall()
+
+        result = []
+
+        for message in messages:
+
+            result.append({
+
+                "message_id":
+                    message[0],
+
+                "conversation_id":
+                    message[1],
+
+                "user_id":
+                    message[2],
+
+                "user_message":
+                    message[3],
+
+                "ai_response":
+                    message[4],
+
+                "message_created_at":
+                    message[5].isoformat()
+                    if message[5]
+                    else None
+
+            })
+
+        return {
+
+            "success": True,
+
+            "conversation": {
+
+                "conversation_id":
+                    conversation[0],
+
+                "user_id":
+                    conversation[1],
+
+                "title":
+                    conversation[2],
+
+                "created_at":
+                    conversation[3].isoformat()
+                    if conversation[3]
+                    else None,
+
+                "updated_at":
+                    conversation[4].isoformat()
+                    if conversation[4]
+                    else None,
+
+                "active_status":
+                    conversation[5]
+
+            },
+
+            "messages":
+                result
+
+        }
+
+    except HTTPException:
+
+        raise
+
+    except Exception as error:
+
+        print(
+            "GET CURRENT USER CONVERSATION ERROR:",
+            error
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail="Unable to get conversation"
+        )
+
+    finally:
+
+        if cursor:
+            cursor.close()
+
+        if connection:
+            connection.close()
+
+
+# =========================================================
+# USER CHAT MESSAGE API
+# =========================================================
+
+
+@app.post("/api/chat/message")
+def send_chat_message(
+    data: ChatMessage,
+    authorization: str | None = Header(
+        default=None
+    )
+):
+
+    connection = None
+    cursor = None
+
+    try:
+
+        message = (
+            data.message.strip()
+            if data.message
+            else ""
+        )
+
+        if not message:
+
+            raise HTTPException(
+                status_code=400,
+                detail="Message cannot be empty"
+            )
+
+        # -------------------------------------------------
+        # AUTHENTICATE USER
+        # -------------------------------------------------
+
+        user = get_authenticated_user(
+            authorization
+        )
+
+        # -------------------------------------------------
+        # NEVER TAKE user_id FROM FRONTEND
+        # -------------------------------------------------
+
+        user_id = user["user_id"]
+
+        connection = get_db_connection()
+
+        cursor = connection.cursor()
+
+        # -------------------------------------------------
+        # USE EXISTING CONVERSATION
+        # -------------------------------------------------
+
+        if data.conversation_id is not None:
+
+            conversation_id = (
+                get_or_create_conversation(
+                    cursor,
+                    user_id,
+                    data.conversation_id
+                )
+            )
+
+        else:
+
+            # -------------------------------------------------
+            # IF FRONTEND SENDS NO CONVERSATION ID,
+            # CREATE A NEW CONVERSATION
+            # -------------------------------------------------
+
+            conversation_id = (
+                create_new_conversation(
+                    cursor,
+                    user_id,
+                    "New Conversation"
+                )
+            )
+
+        connection.commit()
+
+        # -------------------------------------------------
+        # RUN RAG / AGENT PIPELINE
+        # -------------------------------------------------
+
+        try:
+
+            final_answer = (
+                orchestrator_agent(
+                    message
+                )
+            )
+
+        except RuntimeError as error:
+
+            print(
+                "AGENT/RAG ERROR:",
+                error
+            )
+
+            raise HTTPException(
+                status_code=503,
+                detail="Unable to generate a response"
+            )
+
+        except Exception as error:
+
+            print(
+                "CHAT PIPELINE ERROR:",
+                error
+            )
+
+            raise HTTPException(
+                status_code=503,
+                detail="Unable to generate a response"
+            )
+
+        # -------------------------------------------------
+        # STORE QUESTION + AI ANSWER
+        # -------------------------------------------------
+
+        message_id = store_chat_message(
+            cursor,
+            user_id,
+            conversation_id,
+            message,
+            final_answer
+        )
+
+        connection.commit()
+
+        # -------------------------------------------------
+        # GET UPDATED TITLE
+        # -------------------------------------------------
+
+        cursor.execute(
+            """
+            SELECT title
+            FROM user_conversations
+            WHERE conversation_id = %s
+            AND user_id = %s
+            ORDER BY message_id ASC NULLS LAST
+            LIMIT 1
+            """,
+            (
+                conversation_id,
+                user_id
+            )
+        )
+
+        title_row = cursor.fetchone()
+
+        title = (
+            title_row[0]
+            if title_row
+            else "New Conversation"
+        )
+
+        return {
+
+            "success": True,
+
+            "message_id":
+                message_id,
+
+            "conversation_id":
+                conversation_id,
+
+            "user_id":
+                user_id,
+
+            "title":
+                title,
+
+            "user_message":
+                message,
+
+            "answer":
+                final_answer
+
+        }
+
+    except HTTPException:
+
+        if connection:
+            connection.rollback()
+
+        raise
+
+    except Exception as error:
+
+        print(
+            "CHAT MESSAGE ERROR:",
+            error
+        )
+
+        if connection:
+            connection.rollback()
+
+        raise HTTPException(
+            status_code=500,
+            detail="Unable to process chat message"
+        )
+
+    finally:
+
+        if cursor:
+            cursor.close()
+
+        if connection:
             connection.close()
 
 
@@ -461,10 +2466,6 @@ def user_login_api(data: UserLogin):
 # ADMIN LOGIN
 # =========================================================
 
-
-# ---------------------------------------------------------
-# ADMIN LOGIN API
-# ---------------------------------------------------------
 
 @app.post("/api/admin/login")
 def admin_login(data: AdminLogin):
@@ -477,7 +2478,6 @@ def admin_login(data: AdminLogin):
         connection = get_db_connection()
 
         cursor = connection.cursor()
-
 
         cursor.execute(
             """
@@ -493,9 +2493,7 @@ def admin_login(data: AdminLogin):
             (data.email,)
         )
 
-
         admin = cursor.fetchone()
-
 
         if not admin:
 
@@ -503,7 +2501,6 @@ def admin_login(data: AdminLogin):
                 status_code=401,
                 detail="Invalid email or password"
             )
-
 
         admin_id = admin[0]
 
@@ -515,14 +2512,12 @@ def admin_login(data: AdminLogin):
 
         active_status = admin[4]
 
-
         if not active_status:
 
             raise HTTPException(
                 status_code=403,
                 detail="Admin account is inactive"
             )
-
 
         if data.password != password:
 
@@ -531,30 +2526,30 @@ def admin_login(data: AdminLogin):
                 detail="Invalid email or password"
             )
 
-
         return {
 
             "success": True,
 
-            "message": "Admin login successful",
+            "message":
+                "Admin login successful",
 
-            "admin_id": admin_id,
+            "admin_id":
+                admin_id,
 
-            "name": name,
+            "name":
+                name,
 
-            "email": email
+            "email":
+                email
 
         }
-
 
     finally:
 
         if cursor:
-
             cursor.close()
 
         if connection:
-
             connection.close()
 
 
@@ -566,6 +2561,7 @@ def admin_login(data: AdminLogin):
 # ---------------------------------------------------------
 # UPLOAD RAG DOCUMENT
 # ---------------------------------------------------------
+
 
 @app.post("/api/documents/upload")
 async def upload_document(
@@ -585,14 +2581,11 @@ async def upload_document(
                 detail="Only PDF files are allowed"
             )
 
-
         file_data = await file.read()
-
 
         connection = get_db_connection()
 
         cursor = connection.cursor()
-
 
         cursor.execute(
             """
@@ -606,9 +2599,7 @@ async def upload_document(
             (admin_id,)
         )
 
-
         admin = cursor.fetchone()
-
 
         if not admin:
 
@@ -617,9 +2608,7 @@ async def upload_document(
                 detail="Invalid admin"
             )
 
-
         file_size = len(file_data)
-
 
         cursor.execute(
             """
@@ -647,14 +2636,11 @@ async def upload_document(
             )
         )
 
-
         document_id = cursor.fetchone()[0]
-
 
         document_link = (
             f"/api/documents/{document_id}/file"
         )
-
 
         cursor.execute(
             """
@@ -669,39 +2655,102 @@ async def upload_document(
             )
         )
 
-
         connection.commit()
 
+        # -------------------------------------------------
+        # PROCESS PDF AND ADD TO CHROMADB
+        # -------------------------------------------------
+
+        chunks_added = 0
+
+        try:
+
+            if PdfReader is None:
+
+                raise RuntimeError(
+                    "pypdf is not installed"
+                )
+
+            reader = PdfReader(
+                __import__("io").BytesIO(
+                    file_data
+                )
+            )
+
+            pages = []
+
+            for page_index, page in enumerate(
+                reader.pages
+            ):
+
+                try:
+
+                    text = page.extract_text()
+
+                except Exception:
+
+                    text = ""
+
+                pages.append(
+                    (
+                        page_index + 1,
+                        text or ""
+                    )
+                )
+
+            chunks_added = (
+                add_document_to_chromadb(
+                    document_id,
+                    file.filename,
+                    pages
+                )
+            )
+
+        except Exception as error:
+
+            print(
+                "PDF/CHROMADB PROCESSING ERROR:",
+                error
+            )
+
+            chunks_added = 0
 
         return {
 
             "success": True,
 
-            "message": "Document uploaded successfully",
+            "message":
+                "Document uploaded successfully",
 
-            "document_id": document_id,
+            "document_id":
+                document_id,
 
-            "document_name": file.filename,
+            "document_name":
+                file.filename,
 
-            "document_link": document_link,
+            "document_link":
+                document_link,
 
-            "file_size": file_size,
+            "file_size":
+                file_size,
 
-            "admin_id": admin_id,
+            "admin_id":
+                admin_id,
 
-            "created_by": admin[1]
+            "created_by":
+                admin[1],
+
+            "chunks_added":
+                chunks_added
 
         }
-
 
     except HTTPException:
 
         if connection:
-
             connection.rollback()
 
         raise
-
 
     except Exception as error:
 
@@ -711,7 +2760,6 @@ async def upload_document(
         )
 
         if connection:
-
             connection.rollback()
 
         raise HTTPException(
@@ -719,21 +2767,19 @@ async def upload_document(
             detail="Unable to upload document"
         )
 
-
     finally:
 
         if cursor:
-
             cursor.close()
 
         if connection:
-
             connection.close()
 
 
-# ---------------------------------------------------------
+# =========================================================
 # GET ALL RAG DOCUMENTS
-# ---------------------------------------------------------
+# =========================================================
+
 
 @app.get("/api/documents")
 def get_documents():
@@ -746,7 +2792,6 @@ def get_documents():
         connection = get_db_connection()
 
         cursor = connection.cursor()
-
 
         cursor.execute(
             """
@@ -766,33 +2811,36 @@ def get_documents():
             """
         )
 
-
         documents = cursor.fetchall()
 
-
         result = []
-
 
         for document in documents:
 
             result.append({
 
-                "document_id": document[0],
+                "document_id":
+                    document[0],
 
-                "document_name": document[1],
+                "document_name":
+                    document[1],
 
-                "document_link": document[2],
+                "document_link":
+                    document[2],
 
                 "last_updated":
                     document[3].isoformat()
                     if document[3]
                     else None,
 
-                "file_size": document[4],
+                "file_size":
+                    document[4],
 
-                "is_removed": document[5],
+                "is_removed":
+                    document[5],
 
-                "admin_id": document[6],
+                "admin_id":
+                    document[6],
 
                 "created_by":
                     document[7]
@@ -801,9 +2849,7 @@ def get_documents():
 
             })
 
-
         return result
-
 
     except Exception as error:
 
@@ -813,7 +2859,6 @@ def get_documents():
         )
 
         if connection:
-
             connection.rollback()
 
         raise HTTPException(
@@ -821,15 +2866,12 @@ def get_documents():
             detail="Unable to get documents"
         )
 
-
     finally:
 
         if cursor:
-
             cursor.close()
 
         if connection:
-
             connection.close()
 
 
@@ -837,8 +2879,11 @@ def get_documents():
 # GET ALL DETAILS OF ONE RAG DOCUMENT
 # =========================================================
 
+
 @app.get("/api/documents/{document_id}")
-def get_document_details(document_id: int):
+def get_document_details(
+    document_id: int
+):
 
     connection = None
     cursor = None
@@ -848,7 +2893,6 @@ def get_document_details(document_id: int):
         connection = get_db_connection()
 
         cursor = connection.cursor()
-
 
         cursor.execute(
             """
@@ -861,9 +2905,7 @@ def get_document_details(document_id: int):
             """
         )
 
-
         columns = cursor.fetchall()
-
 
         if not columns:
 
@@ -872,18 +2914,15 @@ def get_document_details(document_id: int):
                 detail="rag_documents table not found"
             )
 
-
         column_names = [
             column[0]
             for column in columns
         ]
 
-
         select_columns = ", ".join(
             '"' + column.replace('"', '""') + '"'
             for column in column_names
         )
-
 
         query = f"""
             SELECT {select_columns}
@@ -891,15 +2930,12 @@ def get_document_details(document_id: int):
             WHERE document_id = %s
         """
 
-
         cursor.execute(
             query,
             (document_id,)
         )
 
-
         document = cursor.fetchone()
-
 
         if not document:
 
@@ -908,14 +2944,13 @@ def get_document_details(document_id: int):
                 detail="Document not found"
             )
 
-
         result = {}
 
-
-        for index, column_name in enumerate(column_names):
+        for index, column_name in enumerate(
+            column_names
+        ):
 
             value = document[index]
-
 
             if isinstance(
                 value,
@@ -924,22 +2959,22 @@ def get_document_details(document_id: int):
 
                 value = value.isoformat()
 
-
             elif isinstance(
                 value,
                 bytes
             ):
 
-                value = f"<binary data: {len(value)} bytes>"
-
+                value = (
+                    f"<binary data: "
+                    f"{len(value)} bytes>"
+                )
 
             result[column_name] = value
 
-
         result["pdf_view_link"] = (
-            f"/api/documents/{document_id}/file"
+            f"/api/documents/"
+            f"{document_id}/file"
         )
-
 
         return {
 
@@ -949,11 +2984,9 @@ def get_document_details(document_id: int):
 
         }
 
-
     except HTTPException:
 
         raise
-
 
     except Exception as error:
 
@@ -967,21 +3000,19 @@ def get_document_details(document_id: int):
             detail="Unable to get document details"
         )
 
-
     finally:
 
         if cursor:
-
             cursor.close()
 
         if connection:
-
             connection.close()
 
 
 # =========================================================
 # VIEW PDF DOCUMENT
 # =========================================================
+
 
 @app.get(
     "/api/documents/{document_id}/file",
@@ -998,7 +3029,6 @@ def view_document(document_id: int):
 
         cursor = connection.cursor()
 
-
         cursor.execute(
             """
             SELECT column_name
@@ -1010,9 +3040,7 @@ def view_document(document_id: int):
             """
         )
 
-
         columns = cursor.fetchall()
-
 
         if not columns:
 
@@ -1021,18 +3049,15 @@ def view_document(document_id: int):
                 detail="rag_documents table not found"
             )
 
-
         column_names = [
             column[0]
             for column in columns
         ]
 
-
         select_columns = ", ".join(
             '"' + column.replace('"', '""') + '"'
             for column in column_names
         )
-
 
         query = f"""
             SELECT
@@ -1042,15 +3067,12 @@ def view_document(document_id: int):
             WHERE document_id = %s
         """
 
-
         cursor.execute(
             query,
             (document_id,)
         )
 
-
         document = cursor.fetchone()
-
 
         if not document:
 
@@ -1059,14 +3081,13 @@ def view_document(document_id: int):
                 detail="Document not found"
             )
 
-
         details = {}
 
-
-        for index, column_name in enumerate(column_names):
+        for index, column_name in enumerate(
+            column_names
+        ):
 
             value = document[index]
-
 
             if isinstance(
                 value,
@@ -1075,20 +3096,21 @@ def view_document(document_id: int):
 
                 value = value.isoformat()
 
-
             elif isinstance(
                 value,
                 bytes
             ):
 
-                value = f"<binary data: {len(value)} bytes>"
-
+                value = (
+                    f"<binary data: "
+                    f"{len(value)} bytes>"
+                )
 
             details[column_name] = value
 
-
-        file_data = document[len(column_names)]
-
+        file_data = document[
+            len(column_names)
+        ]
 
         if not file_data:
 
@@ -1097,14 +3119,11 @@ def view_document(document_id: int):
                 detail="PDF file data not found"
             )
 
-
         pdf_base64 = base64.b64encode(
             bytes(file_data)
         ).decode("utf-8")
 
-
         rows = ""
-
 
         for key, value in details.items():
 
@@ -1115,7 +3134,6 @@ def view_document(document_id: int):
             else:
 
                 display_value = str(value)
-
 
             rows += f"""
                 <tr>
@@ -1128,7 +3146,6 @@ def view_document(document_id: int):
                     </td>
                 </tr>
             """
-
 
         html = f"""
         <!DOCTYPE html>
@@ -1269,7 +3286,7 @@ def view_document(document_id: int):
             <div class="container">
 
                 <a
-                    href="http://127.0.0.1:8000/ad_dashboard.html"
+                    href="/ad_dashboard.html"
                     class="back-button"
                 >
                     ← Back
@@ -1322,16 +3339,13 @@ def view_document(document_id: int):
         </html>
         """
 
-
         return HTMLResponse(
             content=html
         )
 
-
     except HTTPException:
 
         raise
-
 
     except Exception as error:
 
@@ -1345,24 +3359,24 @@ def view_document(document_id: int):
             detail="Unable to view document"
         )
 
-
     finally:
 
         if cursor:
-
             cursor.close()
 
         if connection:
-
             connection.close()
 
 
-# ---------------------------------------------------------
+# =========================================================
 # REMOVE RAG DOCUMENT
-# ---------------------------------------------------------
+# =========================================================
+
 
 @app.put("/api/documents/{document_id}/remove")
-def remove_document(document_id: int):
+def remove_document(
+    document_id: int
+):
 
     connection = None
     cursor = None
@@ -1373,6 +3387,41 @@ def remove_document(document_id: int):
 
         cursor = connection.cursor()
 
+        cursor.execute(
+            """
+            SELECT document_id
+            FROM rag_documents
+            WHERE document_id = %s
+            """,
+            (document_id,)
+        )
+
+        document = cursor.fetchone()
+
+        if not document:
+
+            raise HTTPException(
+                status_code=404,
+                detail="Document not found"
+            )
+
+        try:
+
+            delete_document(
+                document_id
+            )
+
+        except Exception as error:
+
+            print(
+                "REMOVE DOCUMENT CHROMADB ERROR:",
+                error
+            )
+
+            raise HTTPException(
+                status_code=500,
+                detail="Unable to remove document from knowledge base"
+            )
 
         cursor.execute(
             """
@@ -1385,35 +3434,23 @@ def remove_document(document_id: int):
             (document_id,)
         )
 
-
-        if cursor.rowcount == 0:
-
-            raise HTTPException(
-                status_code=404,
-                detail="Document not found"
-            )
-
-
         connection.commit()
-
 
         return {
 
             "success": True,
 
-            "message": "Document removed successfully"
+            "message":
+                "Document removed successfully"
 
         }
-
 
     except HTTPException:
 
         if connection:
-
             connection.rollback()
 
         raise
-
 
     except Exception as error:
 
@@ -1423,7 +3460,6 @@ def remove_document(document_id: int):
         )
 
         if connection:
-
             connection.rollback()
 
         raise HTTPException(
@@ -1431,24 +3467,26 @@ def remove_document(document_id: int):
             detail="Unable to remove document"
         )
 
-
     finally:
 
         if cursor:
-
             cursor.close()
 
         if connection:
-
             connection.close()
 
 
-# ---------------------------------------------------------
+# =========================================================
 # PERMANENTLY DELETE RAG DOCUMENT
-# ---------------------------------------------------------
+# =========================================================
 
-@app.delete("/api/documents/{document_id}/permanent")
-def permanently_delete_document(document_id: int):
+
+@app.delete(
+    "/api/documents/{document_id}/permanent"
+)
+def permanently_delete_document(
+    document_id: int
+):
 
     connection = None
     cursor = None
@@ -1459,6 +3497,42 @@ def permanently_delete_document(document_id: int):
 
         cursor = connection.cursor()
 
+        cursor.execute(
+            """
+            SELECT document_id
+            FROM rag_documents
+            WHERE document_id = %s
+            AND is_removed = TRUE
+            """,
+            (document_id,)
+        )
+
+        document = cursor.fetchone()
+
+        if not document:
+
+            raise HTTPException(
+                status_code=404,
+                detail="Removed document not found"
+            )
+
+        try:
+
+            delete_document(
+                document_id
+            )
+
+        except Exception as error:
+
+            print(
+                "PERMANENT CHROMADB DELETE ERROR:",
+                error
+            )
+
+            raise HTTPException(
+                status_code=500,
+                detail="Unable to remove document from knowledge base"
+            )
 
         cursor.execute(
             """
@@ -1469,7 +3543,6 @@ def permanently_delete_document(document_id: int):
             (document_id,)
         )
 
-
         if cursor.rowcount == 0:
 
             raise HTTPException(
@@ -1477,27 +3550,23 @@ def permanently_delete_document(document_id: int):
                 detail="Removed document not found"
             )
 
-
         connection.commit()
-
 
         return {
 
             "success": True,
 
-            "message": "Document permanently deleted"
+            "message":
+                "Document permanently deleted"
 
         }
-
 
     except HTTPException:
 
         if connection:
-
             connection.rollback()
 
         raise
-
 
     except Exception as error:
 
@@ -1507,7 +3576,6 @@ def permanently_delete_document(document_id: int):
         )
 
         if connection:
-
             connection.rollback()
 
         raise HTTPException(
@@ -1515,44 +3583,28 @@ def permanently_delete_document(document_id: int):
             detail="Unable to permanently delete document"
         )
 
-
     finally:
 
         if cursor:
-
             cursor.close()
 
         if connection:
-
             connection.close()
 
 
 # =========================================================
 # ADMIN CHAT HISTORY
 # =========================================================
-#
-# ALL USERS
-#     -> user_access
-#
-# ACTIVE USERS
-#     -> user_access
-#     -> last_activity within last 30 minutes
-#
-# FREQUENT USERS
-#     -> user_access
-#     -> user_conversations
-#     -> sorted by total conversations DESC
-#
-# CONVERSATIONS
-#     -> user_conversations
-# =========================================================
 
 
 # ---------------------------------------------------------
 # ALL USERS
 # ---------------------------------------------------------
 
-@app.get("/api/admin/chat-history/users")
+
+@app.get(
+    "/api/admin/chat-history/users"
+)
 def get_chat_history_users():
 
     connection = None
@@ -1563,7 +3615,6 @@ def get_chat_history_users():
         connection = get_db_connection()
 
         cursor = connection.cursor()
-
 
         cursor.execute(
             """
@@ -1595,22 +3646,22 @@ def get_chat_history_users():
             """
         )
 
-
         users = cursor.fetchall()
 
-
         result = []
-
 
         for user in users:
 
             result.append({
 
-                "user_id": user[0],
+                "user_id":
+                    user[0],
 
-                "name": user[1],
+                "name":
+                    user[1],
 
-                "email": user[2],
+                "email":
+                    user[2],
 
                 "display_name":
                     f"{user[1]} ({user[0]})",
@@ -1628,15 +3679,14 @@ def get_chat_history_users():
 
             })
 
-
         return {
 
             "success": True,
 
-            "users": result
+            "users":
+                result
 
         }
-
 
     except Exception as error:
 
@@ -1650,33 +3700,23 @@ def get_chat_history_users():
             detail="Unable to get all users"
         )
 
-
     finally:
 
         if cursor:
-
             cursor.close()
 
         if connection:
-
             connection.close()
 
 
-# ---------------------------------------------------------
+# =========================================================
 # ACTIVE USERS
-# ---------------------------------------------------------
-#
-# CURRENT TIME IS TAKEN BY POSTGRESQL USING
-# CURRENT_TIMESTAMP.
-#
-# A USER IS ACTIVE WHEN:
-#
-# last_activity >= CURRENT_TIMESTAMP - 30 minutes
-#
-# AND active_status = TRUE
-# ---------------------------------------------------------
+# =========================================================
 
-@app.get("/api/admin/chat-history/active-users")
+
+@app.get(
+    "/api/admin/chat-history/active-users"
+)
 def get_active_chat_users():
 
     connection = None
@@ -1687,7 +3727,6 @@ def get_active_chat_users():
         connection = get_db_connection()
 
         cursor = connection.cursor()
-
 
         cursor.execute(
             """
@@ -1725,22 +3764,22 @@ def get_active_chat_users():
             """
         )
 
-
         users = cursor.fetchall()
 
-
         result = []
-
 
         for user in users:
 
             result.append({
 
-                "user_id": user[0],
+                "user_id":
+                    user[0],
 
-                "name": user[1],
+                "name":
+                    user[1],
 
-                "email": user[2],
+                "email":
+                    user[2],
 
                 "display_name":
                     f"{user[1]} ({user[0]})",
@@ -1758,15 +3797,14 @@ def get_active_chat_users():
 
             })
 
-
         return {
 
             "success": True,
 
-            "users": result
+            "users":
+                result
 
         }
-
 
     except Exception as error:
 
@@ -1780,36 +3818,23 @@ def get_active_chat_users():
             detail="Unable to get active users"
         )
 
-
     finally:
 
         if cursor:
-
             cursor.close()
 
         if connection:
-
             connection.close()
 
 
-# ---------------------------------------------------------
+# =========================================================
 # FREQUENT USERS
-# ---------------------------------------------------------
-#
-# USERS COME FROM user_access.
-#
-# CONVERSATION COUNT COMES FROM user_conversations.
-#
-# HIGHEST CONVERSATION COUNT
-#       ↓
-# FIRST
-#
-# LOWEST CONVERSATION COUNT
-#       ↓
-# LAST
-# ---------------------------------------------------------
+# =========================================================
 
-@app.get("/api/admin/chat-history/frequent-users")
+
+@app.get(
+    "/api/admin/chat-history/frequent-users"
+)
 def get_frequent_chat_users():
 
     connection = None
@@ -1820,7 +3845,6 @@ def get_frequent_chat_users():
         connection = get_db_connection()
 
         cursor = connection.cursor()
-
 
         cursor.execute(
             """
@@ -1857,22 +3881,22 @@ def get_frequent_chat_users():
             """
         )
 
-
         users = cursor.fetchall()
 
-
         result = []
-
 
         for user in users:
 
             result.append({
 
-                "user_id": user[0],
+                "user_id":
+                    user[0],
 
-                "name": user[1],
+                "name":
+                    user[1],
 
-                "email": user[2],
+                "email":
+                    user[2],
 
                 "display_name":
                     f"{user[1]} ({user[0]})",
@@ -1890,15 +3914,14 @@ def get_frequent_chat_users():
 
             })
 
-
         return {
 
             "success": True,
 
-            "users": result
+            "users":
+                result
 
         }
-
 
     except Exception as error:
 
@@ -1912,26 +3935,26 @@ def get_frequent_chat_users():
             detail="Unable to get frequent users"
         )
 
-
     finally:
 
         if cursor:
-
             cursor.close()
 
         if connection:
-
             connection.close()
 
 
-# ---------------------------------------------------------
+# =========================================================
 # GET CONVERSATIONS OF SELECTED USER
-# ---------------------------------------------------------
+# =========================================================
+
 
 @app.get(
     "/api/admin/chat-history/user/{user_id}/conversations"
 )
-def get_user_conversations(user_id: int):
+def get_user_conversations(
+    user_id: int
+):
 
     connection = None
     cursor = None
@@ -1941,11 +3964,6 @@ def get_user_conversations(user_id: int):
         connection = get_db_connection()
 
         cursor = connection.cursor()
-
-
-        # -------------------------------------------------
-        # CHECK USER FROM USER_ACCESS
-        # -------------------------------------------------
 
         cursor.execute(
             """
@@ -1959,9 +3977,7 @@ def get_user_conversations(user_id: int):
             (user_id,)
         )
 
-
         user = cursor.fetchone()
-
 
         if not user:
 
@@ -1969,11 +3985,6 @@ def get_user_conversations(user_id: int):
                 status_code=404,
                 detail="User not found"
             )
-
-
-        # -------------------------------------------------
-        # GET CONVERSATIONS FROM USER_CONVERSATIONS
-        # -------------------------------------------------
 
         cursor.execute(
             """
@@ -2003,12 +4014,9 @@ def get_user_conversations(user_id: int):
             (user_id,)
         )
 
-
         conversations = cursor.fetchall()
 
-
         result = []
-
 
         for conversation in conversations:
 
@@ -2046,7 +4054,6 @@ def get_user_conversations(user_id: int):
 
             })
 
-
         return {
 
             "success": True,
@@ -2068,11 +4075,9 @@ def get_user_conversations(user_id: int):
 
         }
 
-
     except HTTPException:
 
         raise
-
 
     except Exception as error:
 
@@ -2086,21 +4091,19 @@ def get_user_conversations(user_id: int):
             detail="Unable to get user conversations"
         )
 
-
     finally:
 
         if cursor:
-
             cursor.close()
 
         if connection:
-
             connection.close()
 
 
-# ---------------------------------------------------------
+# =========================================================
 # GET MESSAGES OF ONE CONVERSATION
-# ---------------------------------------------------------
+# =========================================================
+
 
 @app.get(
     "/api/admin/chat-history/conversation/{conversation_id}"
@@ -2118,7 +4121,6 @@ def get_admin_conversation_messages(
 
         cursor = connection.cursor()
 
-
         cursor.execute(
             """
             SELECT
@@ -2132,6 +4134,7 @@ def get_admin_conversation_messages(
             FROM user_conversations
 
             WHERE conversation_id = %s
+            AND message_id IS NOT NULL
 
             ORDER BY
                 message_created_at ASC,
@@ -2140,9 +4143,7 @@ def get_admin_conversation_messages(
             (conversation_id,)
         )
 
-
         messages = cursor.fetchall()
-
 
         if not messages:
 
@@ -2151,9 +4152,7 @@ def get_admin_conversation_messages(
                 detail="Conversation not found"
             )
 
-
         result = []
-
 
         for message in messages:
 
@@ -2181,7 +4180,6 @@ def get_admin_conversation_messages(
 
             })
 
-
         return {
 
             "success": True,
@@ -2194,11 +4192,9 @@ def get_admin_conversation_messages(
 
         }
 
-
     except HTTPException:
 
         raise
-
 
     except Exception as error:
 
@@ -2212,15 +4208,12 @@ def get_admin_conversation_messages(
             detail="Unable to get conversation messages"
         )
 
-
     finally:
 
         if cursor:
-
             cursor.close()
 
         if connection:
-
             connection.close()
 
 
@@ -2229,11 +4222,9 @@ def get_admin_conversation_messages(
 # =========================================================
 
 
-# ---------------------------------------------------------
-# CREATE GENERATED_FEEDBACK TABLE
-# ---------------------------------------------------------
-
-def create_generated_feedback_table(cursor):
+def create_generated_feedback_table(
+    cursor
+):
 
     cursor.execute(
         """
@@ -2257,9 +4248,10 @@ def create_generated_feedback_table(cursor):
     )
 
 
-# ---------------------------------------------------------
+# =========================================================
 # SAVE GENERATED FEEDBACK
-# ---------------------------------------------------------
+# =========================================================
+
 
 @app.post("/api/admin/feedback/save")
 def save_generated_feedback(
@@ -2275,9 +4267,9 @@ def save_generated_feedback(
 
         cursor = connection.cursor()
 
-
-        create_generated_feedback_table(cursor)
-
+        create_generated_feedback_table(
+            cursor
+        )
 
         cursor.execute(
             """
@@ -2307,12 +4299,9 @@ def save_generated_feedback(
             )
         )
 
-
         feedback = cursor.fetchone()
 
-
         connection.commit()
-
 
         return {
 
@@ -2331,7 +4320,6 @@ def save_generated_feedback(
 
         }
 
-
     except Exception as error:
 
         print(
@@ -2340,7 +4328,6 @@ def save_generated_feedback(
         )
 
         if connection:
-
             connection.rollback()
 
         raise HTTPException(
@@ -2348,21 +4335,19 @@ def save_generated_feedback(
             detail="Unable to save generated feedback"
         )
 
-
     finally:
 
         if cursor:
-
             cursor.close()
 
         if connection:
-
             connection.close()
 
 
-# ---------------------------------------------------------
+# =========================================================
 # GENERATE FEEDBACK FOR ONE CONVERSATION
-# ---------------------------------------------------------
+# =========================================================
+
 
 @app.post(
     "/api/admin/feedback/generate/{conversation_id}"
@@ -2380,7 +4365,6 @@ def generate_feedback(
 
         cursor = connection.cursor()
 
-
         cursor.execute(
             """
             SELECT
@@ -2392,6 +4376,7 @@ def generate_feedback(
             FROM user_conversations
 
             WHERE conversation_id = %s
+            AND message_id IS NOT NULL
 
             ORDER BY
                 message_created_at ASC,
@@ -2400,9 +4385,7 @@ def generate_feedback(
             (conversation_id,)
         )
 
-
         messages = cursor.fetchall()
-
 
         if not messages:
 
@@ -2411,57 +4394,53 @@ def generate_feedback(
                 detail="Conversation not found"
             )
 
-
         user_id = messages[0][0]
 
-
-        total_messages = len(messages)
-
-
-        user_questions = []
-
-        ai_answers = []
-
+        conversation = []
 
         for message in messages:
 
-            if message[1]:
+            conversation.append({
 
-                user_questions.append(
-                    str(message[1])
+                "user_id":
+                    user_id,
+
+                "user_message":
+                    message[1],
+
+                "ai_response":
+                    message[2],
+
+                "message_created_at":
+                    message[3].isoformat()
+                    if message[3]
+                    else None
+
+            })
+
+        try:
+
+            feedback_text = (
+                feedback_generation_agent(
+                    conversation
                 )
+            )
 
+        except Exception as error:
 
-            if message[2]:
+            print(
+                "FEEDBACK AGENT ERROR:",
+                error
+            )
 
-                ai_answers.append(
-                    str(message[2])
-                )
+            raise HTTPException(
+                status_code=503,
+                detail="Unable to generate feedback"
+            )
 
-
-        feedback_text = (
-            f"Conversation Feedback\n\n"
-            f"User ID: {user_id}\n"
-            f"Conversation ID: {conversation_id}\n"
-            f"Total messages: {total_messages}\n\n"
-            f"User interaction:\n"
-            f"The user asked {len(user_questions)} "
-            f"question(s) in this conversation.\n\n"
-            f"AI responses:\n"
-            f"The system provided {len(ai_answers)} "
-            f"response(s).\n\n"
-            f"Feedback Summary:\n"
-            f"The conversation contains an interaction "
-            f"between the user and the AI system. "
-            f"The conversation can be reviewed for "
-            f"response accuracy, relevance, clarity, "
-            f"and whether the user's questions were "
-            f"successfully addressed."
+        create_generated_feedback_table(
+            cursor
         )
-
-
-        create_generated_feedback_table(cursor)
-
 
         cursor.execute(
             """
@@ -2491,12 +4470,9 @@ def generate_feedback(
             )
         )
 
-
         saved_feedback = cursor.fetchone()
 
-
         connection.commit()
-
 
         return {
 
@@ -2524,15 +4500,12 @@ def generate_feedback(
 
         }
 
-
     except HTTPException:
 
         if connection:
-
             connection.rollback()
 
         raise
-
 
     except Exception as error:
 
@@ -2542,7 +4515,6 @@ def generate_feedback(
         )
 
         if connection:
-
             connection.rollback()
 
         raise HTTPException(
@@ -2550,15 +4522,12 @@ def generate_feedback(
             detail="Unable to generate feedback"
         )
 
-
     finally:
 
         if cursor:
-
             cursor.close()
 
         if connection:
-
             connection.close()
 
 
@@ -2567,19 +4536,11 @@ def generate_feedback(
 # =========================================================
 
 
-# ---------------------------------------------------------
-# ALL USERS
-# ---------------------------------------------------------
-
 @app.get("/api/admin/feedback/users")
 def get_feedback_users():
 
     return get_chat_history_users()
 
-
-# ---------------------------------------------------------
-# ACTIVE USERS
-# ---------------------------------------------------------
 
 @app.get("/api/admin/feedback/active-users")
 def get_feedback_active_users():
@@ -2587,19 +4548,11 @@ def get_feedback_active_users():
     return get_active_chat_users()
 
 
-# ---------------------------------------------------------
-# FREQUENT USERS
-# ---------------------------------------------------------
-
 @app.get("/api/admin/feedback/frequent-users")
 def get_feedback_frequent_users():
 
     return get_frequent_chat_users()
 
-
-# ---------------------------------------------------------
-# FEEDBACK USER CONVERSATIONS
-# ---------------------------------------------------------
 
 @app.get(
     "/api/admin/feedback/user/{user_id}/conversations"
@@ -2608,12 +4561,10 @@ def get_feedback_user_conversations(
     user_id: int
 ):
 
-    return get_user_conversations(user_id)
+    return get_user_conversations(
+        user_id
+    )
 
-
-# ---------------------------------------------------------
-# FEEDBACK CONVERSATION MESSAGES
-# ---------------------------------------------------------
 
 @app.get(
     "/api/admin/feedback/conversation/{conversation_id}"
@@ -2630,16 +4581,7 @@ def get_feedback_conversation(
 # =========================================================
 # GENERATED FEEDBACK OVERVIEW
 # =========================================================
-#
-# IMPORTANT:
-#
-# This endpoint reads ONLY generated_feedback.
-#
-# It does NOT display raw conversations.
-# It does NOT generate new feedback.
-# It only displays feedback that was already generated
-# and stored in generated_feedback.
-# =========================================================
+
 
 @app.get("/api/admin/feedback")
 def get_generated_feedback():
@@ -2653,11 +4595,11 @@ def get_generated_feedback():
 
         cursor = connection.cursor()
 
-
-        create_generated_feedback_table(cursor)
+        create_generated_feedback_table(
+            cursor
+        )
 
         connection.commit()
-
 
         cursor.execute(
             """
@@ -2688,12 +4630,9 @@ def get_generated_feedback():
             """
         )
 
-
         feedbacks = cursor.fetchall()
 
-
         result = []
-
 
         for feedback in feedbacks:
 
@@ -2727,7 +4666,6 @@ def get_generated_feedback():
 
             })
 
-
         return {
 
             "success": True,
@@ -2737,7 +4675,6 @@ def get_generated_feedback():
 
         }
 
-
     except Exception as error:
 
         print(
@@ -2746,7 +4683,6 @@ def get_generated_feedback():
         )
 
         if connection:
-
             connection.rollback()
 
         raise HTTPException(
@@ -2754,21 +4690,19 @@ def get_generated_feedback():
             detail="Unable to get generated feedback"
         )
 
-
     finally:
 
         if cursor:
-
             cursor.close()
 
         if connection:
-
             connection.close()
 
 
-# ---------------------------------------------------------
+# =========================================================
 # GENERATED FEEDBACK FOR ONE USER
-# ---------------------------------------------------------
+# =========================================================
+
 
 @app.get(
     "/api/admin/feedback/user/{user_id}"
@@ -2786,11 +4720,11 @@ def get_user_generated_feedback(
 
         cursor = connection.cursor()
 
-
-        create_generated_feedback_table(cursor)
+        create_generated_feedback_table(
+            cursor
+        )
 
         connection.commit()
-
 
         cursor.execute(
             """
@@ -2824,12 +4758,9 @@ def get_user_generated_feedback(
             (user_id,)
         )
 
-
         feedbacks = cursor.fetchall()
 
-
         result = []
-
 
         for feedback in feedbacks:
 
@@ -2863,7 +4794,6 @@ def get_user_generated_feedback(
 
             })
 
-
         return {
 
             "success": True,
@@ -2875,7 +4805,6 @@ def get_user_generated_feedback(
                 result
 
         }
-
 
     except Exception as error:
 
@@ -2889,15 +4818,12 @@ def get_user_generated_feedback(
             detail="Unable to get user feedback"
         )
 
-
     finally:
 
         if cursor:
-
             cursor.close()
 
         if connection:
-
             connection.close()
 
 
@@ -2905,10 +4831,6 @@ def get_user_generated_feedback(
 # ADMIN STATISTICS
 # =========================================================
 
-
-# ---------------------------------------------------------
-# ADMIN STATISTICS
-# ---------------------------------------------------------
 
 @app.get("/api/admin/statistics")
 def admin_statistics():
@@ -2921,7 +4843,6 @@ def admin_statistics():
         connection = get_db_connection()
 
         cursor = connection.cursor()
-
 
         # -------------------------------------------------
         # TOTAL CONVERSATIONS
@@ -2936,9 +4857,9 @@ def admin_statistics():
             """
         )
 
-
-        total_conversations = cursor.fetchone()[0]
-
+        total_conversations = (
+            cursor.fetchone()[0]
+        )
 
         # -------------------------------------------------
         # UNIQUE USERS
@@ -2953,9 +4874,9 @@ def admin_statistics():
             """
         )
 
-
-        unique_users = cursor.fetchone()[0]
-
+        unique_users = (
+            cursor.fetchone()[0]
+        )
 
         # -------------------------------------------------
         # MESSAGES TODAY
@@ -2970,9 +4891,9 @@ def admin_statistics():
             """
         )
 
-
-        messages_today = cursor.fetchone()[0]
-
+        messages_today = (
+            cursor.fetchone()[0]
+        )
 
         # -------------------------------------------------
         # ACTIVE USERS
@@ -2984,13 +4905,14 @@ def admin_statistics():
             FROM user_access
             WHERE active_status = TRUE
             AND last_activity >=
-                CURRENT_TIMESTAMP - INTERVAL '30 minutes'
+                CURRENT_TIMESTAMP -
+                INTERVAL '30 minutes'
             """
         )
 
-
-        active_users = cursor.fetchone()[0]
-
+        active_users = (
+            cursor.fetchone()[0]
+        )
 
         # -------------------------------------------------
         # MOST FREQUENT USER
@@ -3023,17 +4945,23 @@ def admin_statistics():
             """
         )
 
-
-        frequent_user = cursor.fetchone()
-
+        frequent_user = (
+            cursor.fetchone()
+        )
 
         if frequent_user:
 
-            frequent_user_id = frequent_user[0]
+            frequent_user_id = (
+                frequent_user[0]
+            )
 
-            frequent_user_name = frequent_user[1]
+            frequent_user_name = (
+                frequent_user[1]
+            )
 
-            frequent_conversations = frequent_user[2]
+            frequent_conversations = (
+                frequent_user[2]
+            )
 
         else:
 
@@ -3042,7 +4970,6 @@ def admin_statistics():
             frequent_user_name = None
 
             frequent_conversations = 0
-
 
         return {
 
@@ -3071,7 +4998,6 @@ def admin_statistics():
 
         }
 
-
     except Exception as error:
 
         print(
@@ -3079,18 +5005,18 @@ def admin_statistics():
             error
         )
 
+        if connection:
+            connection.rollback()
+
         raise HTTPException(
             status_code=500,
             detail="Unable to get statistics"
         )
 
-
     finally:
 
         if cursor:
-
             cursor.close()
 
         if connection:
-
             connection.close()

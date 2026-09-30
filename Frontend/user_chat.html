@@ -1,0 +1,2089 @@
+<!DOCTYPE html>
+
+<html lang="en">
+
+<head>
+
+    <meta charset="UTF-8">
+
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+    >
+
+    <title>BLENCEKART - AI Assistant</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <style>
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+
+            font-family:
+                Inter,
+                Arial,
+                Helvetica,
+                sans-serif;
+
+            background:
+                radial-gradient(
+                    circle at top right,
+                    rgba(0, 180, 255, 0.12),
+                    transparent 30%
+                ),
+                radial-gradient(
+                    circle at bottom left,
+                    rgba(80, 70, 255, 0.10),
+                    transparent 30%
+                ),
+                #020817;
+
+            color: white;
+
+            height: 100vh;
+
+            overflow: hidden;
+        }
+
+
+        /* =====================================================
+           GLASS EFFECT
+           ===================================================== */
+
+        .glass {
+            background:
+                rgba(7, 20, 38, 0.78);
+
+            backdrop-filter:
+                blur(18px);
+
+            -webkit-backdrop-filter:
+                blur(18px);
+
+            border:
+                1px solid rgba(80, 180, 255, 0.12);
+        }
+
+
+        /* =====================================================
+           SIDEBAR
+           ===================================================== */
+
+        .sidebar {
+            background:
+                linear-gradient(
+                    180deg,
+                    rgba(5, 20, 38, 0.98),
+                    rgba(2, 10, 24, 0.98)
+                );
+
+            border-right:
+                1px solid rgba(80, 180, 255, 0.12);
+        }
+
+
+        /* =====================================================
+           CHAT AREA
+           ===================================================== */
+
+        .chat-area {
+            background:
+                radial-gradient(
+                    circle at center,
+                    rgba(0, 120, 255, 0.04),
+                    transparent 50%
+                );
+        }
+
+
+        /* =====================================================
+           CONVERSATION ITEM
+           ===================================================== */
+
+        .conversation-item {
+            transition:
+                all 0.2s ease;
+        }
+
+        .conversation-item:hover {
+            background:
+                rgba(30, 100, 160, 0.16);
+        }
+
+        .conversation-item.active {
+            background:
+                linear-gradient(
+                    90deg,
+                    rgba(0, 160, 255, 0.18),
+                    rgba(60, 80, 255, 0.10)
+                );
+
+            border-left:
+                3px solid #38bdf8;
+        }
+
+
+        /* =====================================================
+           USER MESSAGE
+           ===================================================== */
+
+        .message-user {
+            background:
+                linear-gradient(
+                    135deg,
+                    #075985,
+                    #0369a1
+                );
+        }
+
+
+        /* =====================================================
+           AI MESSAGE
+           ===================================================== */
+
+        .message-ai {
+            background:
+                rgba(15, 35, 58, 0.82);
+
+            border:
+                1px solid rgba(80, 180, 255, 0.10);
+        }
+
+
+        /* =====================================================
+           SEND BUTTON
+           ===================================================== */
+
+        .send-button {
+            background:
+                linear-gradient(
+                    135deg,
+                    #0284c7,
+                    #2563eb
+                );
+
+            transition:
+                all 0.2s ease;
+        }
+
+        .send-button:hover {
+            transform:
+                translateY(-1px);
+
+            box-shadow:
+                0 8px 25px
+                rgba(37, 99, 235, 0.30);
+        }
+
+        .send-button:disabled {
+            opacity: 0.5;
+
+            cursor: not-allowed;
+
+            transform: none;
+
+            box-shadow: none;
+        }
+
+
+        /* =====================================================
+           CHAT INPUT
+           ===================================================== */
+
+        .chat-input {
+            background:
+                rgba(5, 20, 38, 0.92);
+
+            border:
+                1px solid rgba(80, 180, 255, 0.16);
+
+            outline: none;
+        }
+
+        .chat-input:focus {
+            border-color:
+                rgba(56, 189, 248, 0.50);
+
+            box-shadow:
+                0 0 0 3px
+                rgba(56, 189, 248, 0.08);
+        }
+
+
+        /* =====================================================
+           SCROLLBAR
+           ===================================================== */
+
+        .scrollbar::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .scrollbar::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        .scrollbar::-webkit-scrollbar-thumb {
+            background:
+                rgba(100, 160, 200, 0.25);
+
+            border-radius: 10px;
+        }
+
+        .scrollbar::-webkit-scrollbar-thumb:hover {
+            background:
+                rgba(100, 160, 200, 0.40);
+        }
+
+
+        /* =====================================================
+           TYPING ANIMATION
+           ===================================================== */
+
+        .typing-dot {
+            animation:
+                typing 1.4s infinite ease-in-out;
+        }
+
+        .typing-dot:nth-child(2) {
+            animation-delay: 0.2s;
+        }
+
+        .typing-dot:nth-child(3) {
+            animation-delay: 0.4s;
+        }
+
+        @keyframes typing {
+
+            0%,
+            60%,
+            100% {
+                opacity: 0.25;
+
+                transform:
+                    translateY(0);
+            }
+
+            30% {
+                opacity: 1;
+
+                transform:
+                    translateY(-3px);
+            }
+        }
+
+
+        /* =====================================================
+           LOGOUT BUTTON
+           ===================================================== */
+
+        .logout-button {
+            transition:
+                all 0.2s ease;
+        }
+
+        .logout-button:hover {
+            transform:
+                translateY(-1px);
+        }
+
+
+        /* =====================================================
+           MOBILE
+           ===================================================== */
+
+        @media (max-width: 768px) {
+
+            .sidebar {
+                width: 75px;
+            }
+
+            .sidebar-text {
+                display: none;
+            }
+
+            .conversation-list {
+                display: none;
+            }
+
+            .brand-text {
+                display: none;
+            }
+
+        }
+
+    </style>
+
+</head>
+
+
+<body>
+
+
+<div class="flex h-screen">
+
+
+    <!-- ================================================= -->
+    <!-- SIDEBAR -->
+    <!-- ================================================= -->
+
+    <aside
+        class="sidebar w-80 flex flex-col"
+    >
+
+
+        <!-- ================================================= -->
+        <!-- BRAND -->
+        <!-- ================================================= -->
+
+        <div
+            class="h-20 flex items-center px-5
+                   border-b border-slate-800/70
+                   flex-shrink-0"
+        >
+
+            <div
+                class="w-11 h-11 rounded-xl
+                       bg-gradient-to-br from-cyan-400 to-blue-600
+                       flex items-center justify-center
+                       shadow-lg shadow-blue-500/20"
+            >
+
+                <span
+                    class="text-white font-black text-lg"
+                >
+                    B
+                </span>
+
+            </div>
+
+
+            <div
+                class="ml-3 brand-text"
+            >
+
+                <div
+                    class="font-bold text-lg tracking-wide"
+                >
+                    BLENCEKART
+                </div>
+
+                <div
+                    class="text-xs text-slate-400"
+                >
+                    AI Assistant
+                </div>
+
+            </div>
+
+        </div>
+
+
+        <!-- ================================================= -->
+        <!-- NEW CHAT -->
+        <!-- ================================================= -->
+
+        <div
+            class="p-4 flex-shrink-0"
+        >
+
+            <button
+                id="newChatButton"
+                type="button"
+                class="w-full py-3 px-4 rounded-xl
+                       bg-gradient-to-r from-cyan-500 to-blue-600
+                       hover:from-cyan-400 hover:to-blue-500
+                       transition
+                       font-semibold
+                       flex items-center justify-center gap-2"
+            >
+
+                <span
+                    class="text-xl"
+                >
+                    +
+                </span>
+
+                <span
+                    class="sidebar-text"
+                >
+                    New Conversation
+                </span>
+
+            </button>
+
+        </div>
+
+
+        <!-- ================================================= -->
+        <!-- CONVERSATION TITLE -->
+        <!-- ================================================= -->
+
+        <div
+            class="px-5 pb-2
+                   text-xs uppercase tracking-widest
+                   text-slate-500 sidebar-text
+                   flex-shrink-0"
+        >
+            Conversations
+        </div>
+
+
+        <!-- ================================================= -->
+        <!-- CONVERSATION LIST -->
+        <!-- ================================================= -->
+
+        <div
+            id="conversationList"
+            class="conversation-list
+                   flex-1
+                   min-h-0
+                   overflow-y-auto
+                   scrollbar
+                   px-3"
+        >
+
+            <div
+                id="conversationLoading"
+                class="text-center
+                       text-slate-500
+                       text-sm
+                       py-6"
+            >
+                Loading conversations...
+            </div>
+
+        </div>
+
+
+        <!-- ================================================= -->
+        <!-- BOTTOM USER AREA -->
+        <!-- ================================================= -->
+
+        <div
+            class="border-t border-slate-800/70
+                   p-4
+                   flex-shrink-0"
+        >
+
+
+            <!-- USER PROFILE -->
+
+            <div
+                class="flex items-center gap-3"
+            >
+
+                <div
+                    class="w-10 h-10 rounded-full
+                           bg-gradient-to-br
+                           from-cyan-400
+                           to-blue-600
+                           flex items-center
+                           justify-center
+                           font-bold
+                           flex-shrink-0"
+                    id="userAvatar"
+                >
+                    U
+                </div>
+
+
+                <div
+                    class="flex-1
+                           min-w-0
+                           sidebar-text"
+                >
+
+                    <div
+                        id="userName"
+                        class="font-semibold truncate"
+                    >
+                        User
+                    </div>
+
+                    <div
+                        id="userEmail"
+                        class="text-xs
+                               text-slate-500
+                               truncate"
+                    >
+                        Loading...
+                    </div>
+
+                </div>
+
+            </div>
+
+
+            <!-- ================================================= -->
+            <!-- LOGOUT BUTTON -->
+            <!-- ================================================= -->
+
+            <button
+                id="logoutButton"
+                type="button"
+                title="Logout"
+                class="logout-button
+                       w-full
+                       mt-4
+                       py-3
+                       px-4
+                       rounded-xl
+                       border
+                       border-red-500/20
+                       bg-red-500/5
+                       hover:bg-red-500/10
+                       hover:border-red-500/40
+                       text-slate-400
+                       hover:text-red-400
+                       transition
+                       flex
+                       items-center
+                       justify-center
+                       gap-2"
+            >
+
+                <span
+                    class="text-lg"
+                >
+                    ⎋
+                </span>
+
+                <span
+                    class="sidebar-text
+                           font-medium"
+                >
+                    Logout
+                </span>
+
+            </button>
+
+        </div>
+
+
+    </aside>
+
+
+    <!-- ================================================= -->
+    <!-- MAIN CHAT AREA -->
+    <!-- ================================================= -->
+
+    <main
+        class="chat-area
+               flex-1
+               flex
+               flex-col
+               min-w-0"
+    >
+
+
+        <!-- ================================================= -->
+        <!-- HEADER -->
+        <!-- ================================================= -->
+
+        <header
+            class="h-20
+                   glass
+                   border-b
+                   border-slate-800/70
+                   flex
+                   items-center
+                   justify-between
+                   px-6
+                   flex-shrink-0"
+        >
+
+            <div>
+
+                <h1
+                    id="chatTitle"
+                    class="text-xl font-bold"
+                >
+                    New Conversation
+                </h1>
+
+                <div
+                    class="text-xs
+                           text-slate-500
+                           mt-1"
+                >
+                    BLENCEKART AI Assistant
+                </div>
+
+            </div>
+
+
+            <div
+                class="flex items-center gap-2
+                       text-xs text-cyan-400"
+            >
+
+                <span
+                    class="w-2 h-2
+                           rounded-full
+                           bg-cyan-400"
+                ></span>
+
+                AI Online
+
+            </div>
+
+        </header>
+
+
+        <!-- ================================================= -->
+        <!-- MESSAGES -->
+        <!-- ================================================= -->
+
+        <section
+            id="messagesContainer"
+            class="flex-1
+                   overflow-y-auto
+                   scrollbar
+                   px-4
+                   md:px-8
+                   py-8"
+        >
+
+
+            <!-- ================================================= -->
+            <!-- WELCOME -->
+            <!-- ================================================= -->
+
+            <div
+                id="welcomeMessage"
+                class="max-w-3xl mx-auto"
+            >
+
+                <div
+                    class="text-center py-16"
+                >
+
+                    <div
+                        class="mx-auto
+                               w-20
+                               h-20
+                               rounded-2xl
+                               bg-gradient-to-br
+                               from-cyan-400/20
+                               to-blue-600/20
+                               border
+                               border-cyan-400/20
+                               flex
+                               items-center
+                               justify-center
+                               mb-6"
+                    >
+
+                        <span
+                            class="text-4xl"
+                        >
+                            ✦
+                        </span>
+
+                    </div>
+
+
+                    <h2
+                        class="text-3xl
+                               font-bold
+                               mb-3"
+                    >
+                        Hey, how can I help you?
+                    </h2>
+
+
+                    <p
+                        class="text-slate-400
+                               max-w-xl
+                               mx-auto"
+                    >
+                        Ask a question and I'll find
+                        the relevant information from
+                        the available knowledge.
+                    </p>
+
+                </div>
+
+            </div>
+
+
+            <!-- ================================================= -->
+            <!-- MESSAGES LIST -->
+            <!-- ================================================= -->
+
+            <div
+                id="messagesList"
+                class="max-w-4xl
+                       mx-auto
+                       space-y-6"
+            ></div>
+
+
+            <!-- ================================================= -->
+            <!-- TYPING INDICATOR -->
+            <!-- ================================================= -->
+
+            <div
+                id="typingIndicator"
+                class="max-w-4xl
+                       mx-auto
+                       hidden"
+            >
+
+                <div
+                    class="flex items-start gap-3"
+                >
+
+                    <div
+                        class="w-9 h-9
+                               rounded-full
+                               bg-gradient-to-br
+                               from-cyan-400
+                               to-blue-600
+                               flex
+                               items-center
+                               justify-center
+                               text-sm
+                               font-bold"
+                    >
+                        B
+                    </div>
+
+
+                    <div
+                        class="message-ai
+                               rounded-2xl
+                               rounded-tl-md
+                               px-5
+                               py-4"
+                    >
+
+                        <div
+                            class="flex gap-1"
+                        >
+
+                            <span
+                                class="typing-dot
+                                       w-2
+                                       h-2
+                                       rounded-full
+                                       bg-cyan-400"
+                            ></span>
+
+                            <span
+                                class="typing-dot
+                                       w-2
+                                       h-2
+                                       rounded-full
+                                       bg-cyan-400"
+                            ></span>
+
+                            <span
+                                class="typing-dot
+                                       w-2
+                                       h-2
+                                       rounded-full
+                                       bg-cyan-400"
+                            ></span>
+
+                        </div>
+
+                    </div>
+
+                </div>
+
+            </div>
+
+
+        </section>
+
+
+        <!-- ================================================= -->
+        <!-- INPUT AREA -->
+        <!-- ================================================= -->
+
+        <div
+            class="px-4
+                   md:px-8
+                   pb-5
+                   flex-shrink-0"
+        >
+
+            <div
+                class="max-w-4xl mx-auto"
+            >
+
+                <div
+                    class="glass
+                           rounded-2xl
+                           p-2"
+                >
+
+                    <div
+                        class="flex
+                               items-end
+                               gap-2"
+                    >
+
+                        <textarea
+                            id="messageInput"
+                            rows="1"
+                            placeholder="Ask anything..."
+                            class="chat-input
+                                   flex-1
+                                   resize-none
+                                   rounded-xl
+                                   px-4
+                                   py-3
+                                   text-white
+                                   placeholder-slate-500
+                                   text-sm"
+                        ></textarea>
+
+
+                        <button
+                            id="sendButton"
+                            type="button"
+                            class="send-button
+                                   w-12
+                                   h-12
+                                   rounded-xl
+                                   flex
+                                   items-center
+                                   justify-center
+                                   text-xl
+                                   flex-shrink-0"
+                            title="Send message"
+                        >
+                            ➤
+                        </button>
+
+                    </div>
+
+                </div>
+
+
+                <div
+                    class="text-center
+                           text-xs
+                           text-slate-600
+                           mt-2"
+                >
+                    Press Enter to send • Shift + Enter for new line
+                </div>
+
+            </div>
+
+        </div>
+
+
+    </main>
+
+
+</div>
+
+
+<script>
+
+
+    /* =====================================================
+       GLOBAL VARIABLES
+       ===================================================== */
+
+    const API_BASE = "";
+
+    let accessToken =
+        localStorage.getItem("access_token");
+
+    let currentUser = null;
+
+    let currentConversationId = null;
+
+    let isSending = false;
+
+
+    /* =====================================================
+       DOM ELEMENTS
+       ===================================================== */
+
+    const conversationList =
+        document.getElementById(
+            "conversationList"
+        );
+
+    const messagesContainer =
+        document.getElementById(
+            "messagesContainer"
+        );
+
+    const messagesList =
+        document.getElementById(
+            "messagesList"
+        );
+
+    const welcomeMessage =
+        document.getElementById(
+            "welcomeMessage"
+        );
+
+    const messageInput =
+        document.getElementById(
+            "messageInput"
+        );
+
+    const sendButton =
+        document.getElementById(
+            "sendButton"
+        );
+
+    const typingIndicator =
+        document.getElementById(
+            "typingIndicator"
+        );
+
+    const chatTitle =
+        document.getElementById(
+            "chatTitle"
+        );
+
+
+    /* =====================================================
+       CHECK LOGIN
+       ===================================================== */
+
+    if (!accessToken) {
+
+        window.location.href =
+            "/user_login.html";
+
+    }
+
+
+    /* =====================================================
+       API HELPER
+       ===================================================== */
+
+    async function apiRequest(
+        url,
+        options = {}
+    ) {
+
+        const headers =
+            options.headers || {};
+
+        headers["Authorization"] =
+            `Bearer ${accessToken}`;
+
+        if (
+            options.body &&
+            !(options.body instanceof FormData)
+        ) {
+
+            headers["Content-Type"] =
+                "application/json";
+
+        }
+
+        options.headers = headers;
+
+        const response =
+            await fetch(
+                API_BASE + url,
+                options
+            );
+
+
+        /* ==============================================
+           SESSION EXPIRED
+           ============================================== */
+
+        if (
+            response.status === 401
+        ) {
+
+            localStorage.removeItem(
+                "access_token"
+            );
+
+            window.location.href =
+                "/user_login.html";
+
+            return null;
+
+        }
+
+        return response;
+
+    }
+
+
+    /* =====================================================
+       LOAD USER
+       ===================================================== */
+
+    async function loadUser() {
+
+        try {
+
+            const response =
+                await apiRequest(
+                    "/api/auth/me"
+                );
+
+            if (!response) {
+                return;
+            }
+
+
+            const data =
+                await response.json();
+
+
+            if (!response.ok) {
+
+                throw new Error(
+                    data.detail ||
+                    "Unable to load user"
+                );
+
+            }
+
+
+            currentUser = data;
+
+
+            document.getElementById(
+                "userName"
+            ).textContent =
+                data.name || "User";
+
+
+            document.getElementById(
+                "userEmail"
+            ).textContent =
+                data.email || "";
+
+
+            document.getElementById(
+                "userAvatar"
+            ).textContent =
+                (data.name || "U")
+                    .charAt(0)
+                    .toUpperCase();
+
+        }
+
+        catch (error) {
+
+            console.error(
+                "LOAD USER ERROR:",
+                error
+            );
+
+        }
+
+    }
+
+
+    /* =====================================================
+       LOAD CONVERSATIONS
+       ===================================================== */
+
+    async function loadConversations() {
+
+        try {
+
+            const response =
+                await apiRequest(
+                    "/api/conversations"
+                );
+
+            if (!response) {
+                return;
+            }
+
+
+            const data =
+                await response.json();
+
+
+            if (!response.ok) {
+
+                throw new Error(
+                    data.detail ||
+                    "Unable to load conversations"
+                );
+
+            }
+
+
+            renderConversations(
+                data.conversations || []
+            );
+
+        }
+
+        catch (error) {
+
+            console.error(
+                "LOAD CONVERSATIONS ERROR:",
+                error
+            );
+
+
+            conversationList.innerHTML = `
+                <div
+                    class="text-center
+                           text-slate-500
+                           text-sm
+                           py-6"
+                >
+                    Unable to load conversations
+                </div>
+            `;
+
+        }
+
+    }
+
+
+    /* =====================================================
+       RENDER CONVERSATIONS
+       ===================================================== */
+
+    function renderConversations(
+        conversations
+    ) {
+
+        conversationList.innerHTML = "";
+
+
+        if (
+            !conversations ||
+            conversations.length === 0
+        ) {
+
+            conversationList.innerHTML = `
+                <div
+                    class="text-center
+                           text-slate-600
+                           text-sm
+                           py-8
+                           sidebar-text"
+                >
+                    No conversations yet
+                </div>
+            `;
+
+            return;
+
+        }
+
+
+        conversations.forEach(
+            conversation => {
+
+
+                const item =
+                    document.createElement(
+                        "button"
+                    );
+
+
+                item.type =
+                    "button";
+
+
+                item.className =
+                    "conversation-item " +
+                    "w-full " +
+                    "text-left " +
+                    "rounded-xl " +
+                    "px-4 " +
+                    "py-3 " +
+                    "mb-1";
+
+
+                /* =========================================
+                   ACTIVE CONVERSATION
+                   ========================================= */
+
+                if (
+                    Number(
+                        conversation.conversation_id
+                    ) ===
+                    Number(
+                        currentConversationId
+                    )
+                ) {
+
+                    item.classList.add(
+                        "active"
+                    );
+
+                }
+
+
+                item.innerHTML = `
+
+                    <div
+                        class="flex
+                               items-center
+                               gap-3"
+                    >
+
+                        <span
+                            class="text-cyan-400"
+                        >
+                            💬
+                        </span>
+
+
+                        <div
+                            class="min-w-0
+                                   flex-1"
+                        >
+
+                            <div
+                                class="text-sm
+                                       font-medium
+                                       truncate"
+                            >
+                                ${escapeHtml(
+                                    conversation.title ||
+                                    "New Conversation"
+                                )}
+                            </div>
+
+
+                            <div
+                                class="text-xs
+                                       text-slate-600
+                                       mt-1"
+                            >
+                                ${conversation.message_count || 0}
+                                messages
+                            </div>
+
+                        </div>
+
+                    </div>
+
+                `;
+
+
+                item.addEventListener(
+                    "click",
+                    () => {
+
+                        openConversation(
+                            conversation.conversation_id
+                        );
+
+                    }
+                );
+
+
+                conversationList.appendChild(
+                    item
+                );
+
+            }
+        );
+
+    }
+
+
+    /* =====================================================
+       CREATE NEW CONVERSATION
+       ===================================================== */
+
+    async function createNewConversation() {
+
+        if (isSending) {
+            return;
+        }
+
+
+        try {
+
+            const response =
+                await apiRequest(
+                    "/api/conversations",
+                    {
+                        method: "POST",
+
+                        body:
+                            JSON.stringify({
+                                title:
+                                    "New Conversation"
+                            })
+                    }
+                );
+
+
+            if (!response) {
+                return;
+            }
+
+
+            const data =
+                await response.json();
+
+
+            if (!response.ok) {
+
+                throw new Error(
+                    data.detail ||
+                    "Unable to create conversation"
+                );
+
+            }
+
+
+            /* =========================================
+               SET NEW CONVERSATION AS ACTIVE
+               ========================================= */
+
+            currentConversationId =
+                data.conversation_id;
+
+
+            chatTitle.textContent =
+                data.title ||
+                "New Conversation";
+
+
+            /* =========================================
+               CLEAR OLD MESSAGES
+               ========================================= */
+
+            clearMessages();
+
+
+            /* =========================================
+               REFRESH SIDEBAR
+               ========================================= */
+
+            await loadConversations();
+
+
+            messageInput.focus();
+
+        }
+
+        catch (error) {
+
+            console.error(
+                "CREATE CONVERSATION ERROR:",
+                error
+            );
+
+
+            alert(
+                "Unable to create a new conversation."
+            );
+
+        }
+
+    }
+
+
+    /* =====================================================
+       OPEN CONVERSATION
+       ===================================================== */
+
+    async function openConversation(
+        conversationId
+    ) {
+
+        try {
+
+            const response =
+                await apiRequest(
+                    `/api/conversations/${conversationId}`
+                );
+
+
+            if (!response) {
+                return;
+            }
+
+
+            const data =
+                await response.json();
+
+
+            if (!response.ok) {
+
+                throw new Error(
+                    data.detail ||
+                    "Unable to open conversation"
+                );
+
+            }
+
+
+            currentConversationId =
+                data.conversation.conversation_id;
+
+
+            chatTitle.textContent =
+                data.conversation.title ||
+                "Conversation";
+
+
+            clearMessages();
+
+
+            const messages =
+                data.messages || [];
+
+
+            messages.forEach(
+                message => {
+
+                    addMessage(
+                        "user",
+                        message.user_message
+                    );
+
+
+                    addMessage(
+                        "ai",
+                        message.ai_response
+                    );
+
+                }
+            );
+
+
+            /* =========================================
+               REFRESH ACTIVE SIDEBAR ITEM
+               ========================================= */
+
+            await loadConversations();
+
+
+            scrollToBottom();
+
+
+            messageInput.focus();
+
+        }
+
+        catch (error) {
+
+            console.error(
+                "OPEN CONVERSATION ERROR:",
+                error
+            );
+
+
+            alert(
+                "Unable to open this conversation."
+            );
+
+        }
+
+    }
+
+
+    /* =====================================================
+       CLEAR MESSAGES
+       ===================================================== */
+
+    function clearMessages() {
+
+        messagesList.innerHTML = "";
+
+
+        welcomeMessage.classList.remove(
+            "hidden"
+        );
+
+    }
+
+
+    /* =====================================================
+       ADD MESSAGE
+       ===================================================== */
+
+    function addMessage(
+        type,
+        text
+    ) {
+
+
+        welcomeMessage.classList.add(
+            "hidden"
+        );
+
+
+        const wrapper =
+            document.createElement(
+                "div"
+            );
+
+
+        /* =================================================
+           USER MESSAGE
+           ================================================= */
+
+        if (type === "user") {
+
+            wrapper.className =
+                "flex justify-end";
+
+
+            wrapper.innerHTML = `
+
+                <div
+                    class="max-w-[80%]
+                           flex
+                           flex-row-reverse
+                           items-start
+                           gap-3"
+                >
+
+                    <div
+                        class="w-9 h-9
+                               rounded-full
+                               bg-slate-700
+                               flex
+                               items-center
+                               justify-center
+                               text-sm
+                               font-bold
+                               flex-shrink-0"
+                    >
+                        ${escapeHtml(
+                            currentUser?.name
+                                ?.charAt(0)
+                                ?.toUpperCase()
+                            || "U"
+                        )}
+                    </div>
+
+
+                    <div
+                        class="message-user
+                               rounded-2xl
+                               rounded-tr-md
+                               px-5
+                               py-3
+                               text-sm
+                               leading-6
+                               whitespace-pre-wrap"
+                    >
+                        ${escapeHtml(text)}
+                    </div>
+
+                </div>
+
+            `;
+
+        }
+
+
+        /* =================================================
+           AI MESSAGE
+           ================================================= */
+
+        else {
+
+            wrapper.className =
+                "flex justify-start";
+
+
+            wrapper.innerHTML = `
+
+                <div
+                    class="max-w-[85%]
+                           flex
+                           items-start
+                           gap-3"
+                >
+
+                    <div
+                        class="w-9 h-9
+                               rounded-full
+                               bg-gradient-to-br
+                               from-cyan-400
+                               to-blue-600
+                               flex
+                               items-center
+                               justify-center
+                               text-sm
+                               font-bold
+                               flex-shrink-0"
+                    >
+                        B
+                    </div>
+
+
+                    <div
+                        class="message-ai
+                               rounded-2xl
+                               rounded-tl-md
+                               px-5
+                               py-4
+                               text-sm
+                               leading-7
+                               whitespace-pre-wrap"
+                    >
+                        ${formatAIResponse(text)}
+                    </div>
+
+                </div>
+
+            `;
+
+        }
+
+
+        messagesList.appendChild(
+            wrapper
+        );
+
+
+        scrollToBottom();
+
+    }
+
+
+    /* =====================================================
+       SEND MESSAGE
+       ===================================================== */
+
+    async function sendMessage() {
+
+        if (isSending) {
+            return;
+        }
+
+
+        const message =
+            messageInput.value.trim();
+
+
+        if (!message) {
+            return;
+        }
+
+
+        isSending = true;
+
+
+        sendButton.disabled =
+            true;
+
+
+        messageInput.value =
+            "";
+
+
+        autoResizeTextarea();
+
+
+        /* =================================================
+           SHOW USER MESSAGE
+           ================================================= */
+
+        addMessage(
+            "user",
+            message
+        );
+
+
+        /* =================================================
+           SHOW TYPING
+           ================================================= */
+
+        typingIndicator.classList.remove(
+            "hidden"
+        );
+
+
+        scrollToBottom();
+
+
+        try {
+
+
+            /* =================================================
+               CHAT API
+
+               This is the ONLY chat endpoint called
+               from the frontend.
+
+               The backend /api/chat/message should
+               execute your agent pipeline.
+               ================================================= */
+
+            const response =
+                await apiRequest(
+                    "/api/chat/message",
+                    {
+                        method: "POST",
+
+                        body:
+                            JSON.stringify({
+
+                                message:
+                                    message,
+
+                                conversation_id:
+                                    currentConversationId
+
+                            })
+                    }
+                );
+
+
+            if (!response) {
+                return;
+            }
+
+
+            const data =
+                await response.json();
+
+
+            if (!response.ok) {
+
+                throw new Error(
+                    data.detail ||
+                    "Unable to generate response"
+                );
+
+            }
+
+
+            /* =================================================
+               UPDATE CONVERSATION ID
+               ================================================= */
+
+            currentConversationId =
+                data.conversation_id;
+
+
+            /* =================================================
+               UPDATE TITLE
+               ================================================= */
+
+            chatTitle.textContent =
+                data.title ||
+                "Conversation";
+
+
+            /* =================================================
+               HIDE TYPING
+               ================================================= */
+
+            typingIndicator.classList.add(
+                "hidden"
+            );
+
+
+            /* =================================================
+               SHOW AI RESPONSE
+               ================================================= */
+
+            addMessage(
+                "ai",
+                data.answer ||
+                "No response was generated."
+            );
+
+
+            /* =================================================
+               REFRESH CONVERSATION SIDEBAR
+
+               This makes the newly created conversation
+               appear immediately.
+               ================================================= */
+
+            await loadConversations();
+
+        }
+
+
+        catch (error) {
+
+            console.error(
+                "SEND MESSAGE ERROR:",
+                error
+            );
+
+
+            typingIndicator.classList.add(
+                "hidden"
+            );
+
+
+            addMessage(
+                "ai",
+                "Sorry, I couldn't process your message right now. Please try again."
+            );
+
+        }
+
+
+        finally {
+
+            isSending =
+                false;
+
+
+            sendButton.disabled =
+                false;
+
+
+            messageInput.focus();
+
+        }
+
+    }
+
+
+    /* =====================================================
+       LOGOUT
+       ===================================================== */
+
+    async function logout() {
+
+        try {
+
+            await apiRequest(
+                "/api/auth/logout",
+                {
+                    method: "POST"
+                }
+            );
+
+        }
+
+        catch (error) {
+
+            console.error(
+                "LOGOUT ERROR:",
+                error
+            );
+
+        }
+
+        finally {
+
+
+            /* =============================================
+               REMOVE LOGIN INFORMATION
+               ============================================= */
+
+            localStorage.removeItem(
+                "access_token"
+            );
+
+
+            localStorage.removeItem(
+                "user_id"
+            );
+
+
+            localStorage.removeItem(
+                "user_name"
+            );
+
+
+            localStorage.removeItem(
+                "user_email"
+            );
+
+
+            /* =============================================
+               RETURN TO HOME PAGE
+               ============================================= */
+
+            window.location.href =
+                "/index.html";
+
+        }
+
+    }
+
+
+    /* =====================================================
+       FORMAT AI RESPONSE
+       ===================================================== */
+
+    function formatAIResponse(
+        text
+    ) {
+
+        if (!text) {
+            return "";
+        }
+
+
+        return escapeHtml(
+            text
+        );
+
+    }
+
+
+    /* =====================================================
+       ESCAPE HTML
+       ===================================================== */
+
+    function escapeHtml(
+        value
+    ) {
+
+        return String(value)
+            .replaceAll(
+                "&",
+                "&amp;"
+            )
+            .replaceAll(
+                "<",
+                "&lt;"
+            )
+            .replaceAll(
+                ">",
+                "&gt;"
+            )
+            .replaceAll(
+                '"',
+                "&quot;"
+            )
+            .replaceAll(
+                "'",
+                "&#039;"
+            );
+
+    }
+
+
+    /* =====================================================
+       SCROLL TO BOTTOM
+       ===================================================== */
+
+    function scrollToBottom() {
+
+        setTimeout(
+            () => {
+
+                messagesContainer.scrollTop =
+                    messagesContainer.scrollHeight;
+
+            },
+            50
+        );
+
+    }
+
+
+    /* =====================================================
+       TEXTAREA AUTO RESIZE
+       ===================================================== */
+
+    function autoResizeTextarea() {
+
+        messageInput.style.height =
+            "auto";
+
+
+        messageInput.style.height =
+            Math.min(
+                messageInput.scrollHeight,
+                150
+            ) + "px";
+
+    }
+
+
+    /* =====================================================
+       EVENT LISTENERS
+       ===================================================== */
+
+    sendButton.addEventListener(
+        "click",
+        sendMessage
+    );
+
+
+    document
+        .getElementById(
+            "newChatButton"
+        )
+        .addEventListener(
+            "click",
+            createNewConversation
+        );
+
+
+    document
+        .getElementById(
+            "logoutButton"
+        )
+        .addEventListener(
+            "click",
+            logout
+        );
+
+
+    messageInput.addEventListener(
+        "input",
+        autoResizeTextarea
+    );
+
+
+    messageInput.addEventListener(
+        "keydown",
+        event => {
+
+            if (
+                event.key === "Enter" &&
+                !event.shiftKey
+            ) {
+
+                event.preventDefault();
+
+                sendMessage();
+
+            }
+
+        }
+    );
+
+
+    /* =====================================================
+       INITIALIZE CHAT PAGE
+       ===================================================== */
+
+    async function initializeChat() {
+
+        await loadUser();
+
+        await loadConversations();
+
+        messageInput.focus();
+
+    }
+
+
+    initializeChat();
+
+
+</script>
+
+
+</body>
+
+</html>

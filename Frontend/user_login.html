@@ -5,7 +5,6 @@
 
 <head>
 
-
 <meta charset="UTF-8">
 
 <meta
@@ -43,7 +42,6 @@
     }
 
 </script>
-
 
 <style>
 
@@ -269,18 +267,15 @@
 
 </style>
 
-
 </head>
 
 <body>
-
 
 <!-- =========================================
      MAIN BACKGROUND
 ========================================== -->
 
 <div class="login-background min-h-screen">
-
 
     <!-- =====================================
          TOP NAVIGATION
@@ -836,34 +831,44 @@
             }
 
 
-            successBox.textContent =
-                "Account created successfully. You can now sign in.";
+            /*
+             * Store user information returned
+             * by the backend.
+             */
 
-            successBox.style.display =
-                "block";
+            if (result.user_id) {
 
+                localStorage.setItem(
+                    "user_id",
+                    result.user_id
+                );
 
-            // Clear fields
-
-            document.getElementById(
-                "signupUsername"
-            ).value = "";
-
-            document.getElementById(
-                "signupEmail"
-            ).value = "";
-
-            document.getElementById(
-                "signupPassword"
-            ).value = "";
+            }
 
 
-            // Show login after successful signup
+            if (result.username) {
 
-            setTimeout(
-                showLogin,
-                1200
+                localStorage.setItem(
+                    "username",
+                    result.username
+                );
+
+            }
+
+
+            localStorage.setItem(
+                "user_email",
+                result.email || email
             );
+
+
+            /*
+             * Redirect to user chat only
+             * after successful registration.
+             */
+
+            window.location.href =
+                "/user_chat.html";
 
         }
 
@@ -987,6 +992,18 @@
             );
 
 
+            // Store authentication token
+
+            if (result.access_token) {
+
+                localStorage.setItem(
+                    "access_token",
+                    result.access_token
+                );
+
+            }
+
+
             // Redirect to user chat
 
             window.location.href =
@@ -1013,4 +1030,3 @@
 </body>
 
 </html>
-
