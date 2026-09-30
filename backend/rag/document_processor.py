@@ -3,7 +3,6 @@ from rag.chunker import create_chunks
 from rag.embeddings import create_embeddings
 from rag.chroma_manager import add_document_chunks
 
-
 def process_pdf(
     file_path,
     document_id,
