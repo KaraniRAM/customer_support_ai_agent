@@ -1,4 +1,3 @@
-
 # ---------------------------------------------------------
 # IMPORTS
 # ---------------------------------------------------------
@@ -17,6 +16,7 @@ import re
 import secrets
 import hashlib
 import math
+import io
 
 from datetime import datetime, date
 from dotenv import load_dotenv
@@ -44,9 +44,11 @@ except Exception:
     SentenceTransformer = None
 
 try:
-    import anthropic
+    from google import genai
+    from google.genai import types
 except Exception:
-    anthropic = None
+    genai = None
+    types = None
 
 
 # ---------------------------------------------------------
@@ -96,6 +98,51 @@ def get_db_connection():
 
 
 # ---------------------------------------------------------
+# FIX USER CONVERSATION SCHEMA
+# ---------------------------------------------------------
+
+def ensure_conversation_schema():
+
+    connection = None
+    cursor = None
+
+    try:
+
+        connection = get_db_connection()
+        cursor = connection.cursor()
+
+        cursor.execute(
+            """
+            ALTER TABLE user_conversations
+            ALTER COLUMN message_id DROP NOT NULL
+            """
+        )
+
+        connection.commit()
+
+    except Exception as error:
+
+        if connection:
+            connection.rollback()
+
+        print(
+            "CONVERSATION SCHEMA CHECK ERROR:",
+            error
+        )
+
+    finally:
+
+        if cursor:
+            cursor.close()
+
+        if connection:
+            connection.close()
+
+
+ensure_conversation_schema()
+
+
+# ---------------------------------------------------------
 # APPLICATION SETTINGS
 # ---------------------------------------------------------
 
@@ -103,11 +150,11 @@ CONVERSATION_INACTIVITY_MINUTES = 30
 
 LLM_MODEL = os.getenv(
     "LLM_MODEL",
-    "claude-sonnet-4-6"
+    "gemini-3.8-flash"
 )
 
-ANTHROPIC_API_KEY = os.getenv(
-    "ANTHROPIC_API_KEY",
+GEMINI_API_KEY = os.getenv(
+    "GEMINI_API_KEY",
     ""
 )
 
@@ -142,21 +189,12 @@ _embedding_model = None
 # PYDANTIC MODELS
 # =========================================================
 
-
-# ---------------------------------------------------------
-# ADMIN LOGIN DATA
-# ---------------------------------------------------------
-
 class AdminLogin(BaseModel):
 
     email: str
 
     password: str
 
-
-# ---------------------------------------------------------
-# USER SIGNUP DATA
-# ---------------------------------------------------------
 
 class UserRegister(BaseModel):
 
@@ -167,20 +205,12 @@ class UserRegister(BaseModel):
     password: str
 
 
-# ---------------------------------------------------------
-# USER LOGIN DATA
-# ---------------------------------------------------------
-
 class UserLogin(BaseModel):
 
     email: str
 
     password: str
 
-
-# ---------------------------------------------------------
-# CHAT MESSAGE DATA
-# ---------------------------------------------------------
 
 class ChatMessage(BaseModel):
 
@@ -191,18 +221,10 @@ class ChatMessage(BaseModel):
     user_id: int | None = None
 
 
-# ---------------------------------------------------------
-# NEW CONVERSATION DATA
-# ---------------------------------------------------------
-
 class NewConversation(BaseModel):
 
     title: str | None = "New Conversation"
 
-
-# ---------------------------------------------------------
-# GENERATED FEEDBACK DATA
-# ---------------------------------------------------------
 
 class GeneratedFeedback(BaseModel):
 
@@ -218,7 +240,6 @@ class GeneratedFeedback(BaseModel):
 # =========================================================
 # SESSION HELPERS
 # =========================================================
-
 
 def create_user_session(user_id):
 
@@ -327,7 +348,6 @@ def get_authenticated_user(
 # CHROMADB HELPERS
 # =========================================================
 
-
 def get_chroma_collection():
 
     global _chroma_client
@@ -346,6 +366,11 @@ def get_chroma_collection():
 
     if _chroma_client is None:
 
+        print(
+            "CHROMADB DIRECTORY:",
+            str(CHROMA_DIR)
+        )
+
         _chroma_client = chromadb.PersistentClient(
             path=str(CHROMA_DIR)
         )
@@ -356,6 +381,16 @@ def get_chroma_collection():
             _chroma_client.get_or_create_collection(
                 name=CHROMA_COLLECTION_NAME
             )
+        )
+
+        print(
+            "CHROMADB COLLECTION:",
+            CHROMA_COLLECTION_NAME
+        )
+
+        print(
+            "CHROMADB EXISTING CHUNKS:",
+            _chroma_collection.count()
         )
 
     return _chroma_collection
@@ -373,8 +408,17 @@ def get_embedding_model():
 
     if _embedding_model is None:
 
+        print(
+            "LOADING EMBEDDING MODEL:",
+            EMBEDDING_MODEL_NAME
+        )
+
         _embedding_model = SentenceTransformer(
             EMBEDDING_MODEL_NAME
+        )
+
+        print(
+            "EMBEDDING MODEL LOADED"
         )
 
     return _embedding_model
@@ -399,16 +443,34 @@ def generate_embeddings(texts):
     ]
 
 
+# ---------------------------------------------------------
+# DELETE DOCUMENT FROM CHROMADB
+# ---------------------------------------------------------
+
 def delete_document(document_id):
 
     try:
 
         collection = get_chroma_collection()
 
+        existing_count = collection.count()
+
+        print(
+            "CHROMADB COUNT BEFORE DELETE:",
+            existing_count
+        )
+
         collection.delete(
             where={
                 "document_id": int(document_id)
             }
+        )
+
+        after_count = collection.count()
+
+        print(
+            "CHROMADB COUNT AFTER DELETE:",
+            after_count
         )
 
         return True
@@ -425,6 +487,10 @@ def delete_document(document_id):
         )
 
 
+# ---------------------------------------------------------
+# ADD PDF DOCUMENT TO CHROMADB
+# ---------------------------------------------------------
+
 def add_document_to_chromadb(
     document_id,
     document_name,
@@ -433,15 +499,46 @@ def add_document_to_chromadb(
 
     if not pages:
 
+        print(
+            "NO PDF PAGES RECEIVED"
+        )
+
         return 0
 
     collection = get_chroma_collection()
 
-    chunks = []
+    # -----------------------------------------------------
+    # REMOVE OLD CHUNKS FOR THIS DOCUMENT
+    # -----------------------------------------------------
+
+    try:
+
+        collection.delete(
+            where={
+                "document_id": int(document_id)
+            }
+        )
+
+    except Exception as error:
+
+        print(
+            "OLD CHUNKS DELETE WARNING:",
+            error
+        )
+
+    # -----------------------------------------------------
+    # CHUNK SETTINGS
+    # -----------------------------------------------------
 
     chunk_size = 1000
 
     overlap = 150
+
+    chunks = []
+
+    # -----------------------------------------------------
+    # CREATE CHUNKS
+    # -----------------------------------------------------
 
     for page_number, page_text in pages:
 
@@ -491,18 +588,64 @@ def add_document_to_chromadb(
 
             local_chunk_number += 1
 
+    # -----------------------------------------------------
+    # CHECK CHUNKS
+    # -----------------------------------------------------
+
     if not chunks:
 
+        print(
+            "NO TEXT CHUNKS CREATED FROM PDF"
+        )
+
         return 0
+
+    print(
+        "PDF CHUNKS CREATED:",
+        len(chunks)
+    )
+
+    # -----------------------------------------------------
+    # GET TEXTS
+    # -----------------------------------------------------
 
     texts = [
         item["text"]
         for item in chunks
     ]
 
+    # -----------------------------------------------------
+    # CREATE EMBEDDINGS
+    # -----------------------------------------------------
+
+    print(
+        "GENERATING EMBEDDINGS..."
+    )
+
     embeddings = generate_embeddings(
         texts
     )
+
+    if not embeddings:
+
+        raise RuntimeError(
+            "Unable to generate document embeddings"
+        )
+
+    if len(embeddings) != len(texts):
+
+        raise RuntimeError(
+            "Embedding count does not match chunk count"
+        )
+
+    print(
+        "EMBEDDINGS CREATED:",
+        len(embeddings)
+    )
+
+    # -----------------------------------------------------
+    # CREATE CHROMADB DATA
+    # -----------------------------------------------------
 
     ids = []
 
@@ -525,7 +668,9 @@ def add_document_to_chromadb(
 
         metadatas.append({
 
-            "document_id": int(document_id),
+            "document_id": int(
+                document_id
+            ),
 
             "document_name": str(
                 document_name
@@ -539,6 +684,14 @@ def add_document_to_chromadb(
 
         })
 
+    # -----------------------------------------------------
+    # STORE IN CHROMADB
+    # -----------------------------------------------------
+
+    print(
+        "ADDING CHUNKS TO CHROMADB..."
+    )
+
     collection.add(
         ids=ids,
         documents=documents,
@@ -546,70 +699,203 @@ def add_document_to_chromadb(
         metadatas=metadatas
     )
 
+    # -----------------------------------------------------
+    # VERIFY STORAGE
+    # -----------------------------------------------------
+
+    final_count = collection.count()
+
+    print(
+        "CHROMADB TOTAL CHUNKS AFTER UPLOAD:",
+        final_count
+    )
+
+    # -----------------------------------------------------
+    # VERIFY THIS DOCUMENT
+    # -----------------------------------------------------
+
+    try:
+
+        verification = collection.get(
+            where={
+                "document_id": int(document_id)
+            }
+        )
+
+        stored_documents = (
+            verification.get(
+                "documents",
+                []
+            )
+            if verification
+            else []
+        )
+
+        print(
+            "CHROMADB STORED CHUNKS FOR DOCUMENT",
+            document_id,
+            ":",
+            len(stored_documents)
+        )
+
+    except Exception as error:
+
+        print(
+            "CHROMADB VERIFICATION WARNING:",
+            error
+        )
+
     return len(chunks)
 
+
+# ---------------------------------------------------------
+# RETRIEVE RELEVANT CHUNKS FROM CHROMADB
+# ---------------------------------------------------------
 
 def retrieve_relevant_chunks(
     query,
     number_of_results=6
 ):
 
+    if not query:
+
+        return []
+
     collection = get_chroma_collection()
+
+    # -----------------------------------------------------
+    # CHECK TOTAL CHUNKS
+    # -----------------------------------------------------
+
+    total_documents = collection.count()
+
+    print(
+        "CHROMADB TOTAL CHUNKS:",
+        total_documents
+    )
+
+    if total_documents == 0:
+
+        print(
+            "CHROMADB IS EMPTY"
+        )
+
+        return []
+
+    # -----------------------------------------------------
+    # CREATE QUERY EMBEDDING
+    # -----------------------------------------------------
+
+    print(
+        "CREATING QUERY EMBEDDING..."
+    )
 
     query_embedding = generate_embeddings(
         [query]
     )[0]
 
-    count = collection.count()
-
-    if count == 0:
-
-        return []
+    # -----------------------------------------------------
+    # LIMIT RESULTS
+    # -----------------------------------------------------
 
     number_of_results = min(
         number_of_results,
-        count
+        total_documents
+    )
+
+    # -----------------------------------------------------
+    # QUERY CHROMADB
+    # -----------------------------------------------------
+
+    print(
+        "QUERYING CHROMADB FOR:",
+        query
     )
 
     result = collection.query(
+
         query_embeddings=[
             query_embedding
         ],
-        n_results=number_of_results
+
+        n_results=number_of_results,
+
+        include=[
+            "documents",
+            "metadatas",
+            "distances"
+        ]
     )
 
+    # -----------------------------------------------------
+    # GET DOCUMENTS
+    # -----------------------------------------------------
+
     documents = (
-        result.get("documents", [[]])[0]
+        result.get(
+            "documents",
+            [[]]
+        )[0]
         if result.get("documents")
         else []
     )
 
+    # -----------------------------------------------------
+    # GET METADATA
+    # -----------------------------------------------------
+
     metadatas = (
-        result.get("metadatas", [[]])[0]
+        result.get(
+            "metadatas",
+            [[]]
+        )[0]
         if result.get("metadatas")
         else []
     )
 
+    # -----------------------------------------------------
+    # GET DISTANCES
+    # -----------------------------------------------------
+
     distances = (
-        result.get("distances", [[]])[0]
+        result.get(
+            "distances",
+            [[]]
+        )[0]
         if result.get("distances")
         else []
     )
 
     retrieved = []
 
+    # -----------------------------------------------------
+    # BUILD RETRIEVED RESULT
+    # -----------------------------------------------------
+
     for index, document in enumerate(documents):
 
+        if not document:
+
+            continue
+
         metadata = (
+
             metadatas[index]
+
             if index < len(metadatas)
+
             else {}
+
         )
 
         distance = (
+
             distances[index]
+
             if index < len(distances)
+
             else None
+
         )
 
         retrieved.append({
@@ -622,13 +908,47 @@ def retrieve_relevant_chunks(
 
         })
 
+    print(
+        "CHROMADB RETRIEVED CHUNKS:",
+        len(retrieved)
+    )
+
+    # -----------------------------------------------------
+    # PRINT RETRIEVED DOCUMENT INFORMATION
+    # -----------------------------------------------------
+
+    for index, item in enumerate(
+        retrieved,
+        start=1
+    ):
+
+        metadata = item.get(
+            "metadata",
+            {}
+        )
+
+        print(
+            f"RETRIEVED CHUNK {index}:",
+            "document=",
+            metadata.get(
+                "document_name"
+            ),
+            "page=",
+            metadata.get(
+                "page_number"
+            ),
+            "distance=",
+            item.get(
+                "distance"
+            )
+        )
+
     return retrieved
 
 
 # =========================================================
 # AGENT 1 - QUERY UNDERSTANDING AGENT
 # =========================================================
-
 
 def query_understanding_agent(
     original_question
@@ -698,7 +1018,6 @@ def query_understanding_agent(
 # AGENT 2 - KNOWLEDGE RETRIEVAL AGENT
 # =========================================================
 
-
 def knowledge_retrieval_agent(
     processed_query
 ):
@@ -708,7 +1027,8 @@ def knowledge_retrieval_agent(
     ]
 
     return retrieve_relevant_chunks(
-        cleaned_question
+        cleaned_question,
+        number_of_results=6
     )
 
 
@@ -716,110 +1036,151 @@ def knowledge_retrieval_agent(
 # AGENT 3 - RESPONSE GENERATION AGENT
 # =========================================================
 
-
 def response_generation_agent(
     original_question,
     retrieved_chunks
 ):
 
-    if anthropic is None:
+    if genai is None:
 
         raise RuntimeError(
-            "Anthropic package is not installed"
+            "Google GenAI package is not installed"
         )
 
-    if not ANTHROPIC_API_KEY:
+    if not GEMINI_API_KEY:
 
         raise RuntimeError(
-            "LLM API key is not configured"
+            "Gemini API key is not configured"
         )
+
+    # -----------------------------------------------------
+    # BUILD DOCUMENT CONTEXT
+    # -----------------------------------------------------
 
     context_parts = []
 
-    for chunk in retrieved_chunks:
+    for index, chunk in enumerate(
+        retrieved_chunks,
+        start=1
+    ):
 
         text_value = chunk.get(
             "text",
             ""
         )
 
-        if text_value:
+        metadata = chunk.get(
+            "metadata",
+            {}
+        )
 
-            context_parts.append(
-                text_value
-            )
+        if not text_value:
+
+            continue
+
+        document_name = metadata.get(
+            "document_name",
+            "Uploaded document"
+        )
+
+        page_number = metadata.get(
+            "page_number",
+            "Unknown"
+        )
+
+        context_parts.append(
+            f"""
+Document: {document_name}
+Page: {page_number}
+Retrieved section {index}:
+
+{text_value}
+"""
+        )
 
     context = "\n\n".join(
         context_parts
     )
 
+    # -----------------------------------------------------
+    # SAFETY CHECK
+    # -----------------------------------------------------
+
     if not context:
 
-        context = (
-            "No relevant information was "
-            "found in the uploaded documents."
+        return (
+            "The available documents do not "
+            "contain enough information to answer "
+            "this question."
         )
 
-    client = anthropic.Anthropic(
-        api_key=ANTHROPIC_API_KEY
+    # -----------------------------------------------------
+    # CREATE GEMINI CLIENT
+    # -----------------------------------------------------
+
+    client = genai.Client(
+        api_key=GEMINI_API_KEY
     )
 
-    prompt = f"""
-You are the response generation component of a
-document question-answering system.
+    # -----------------------------------------------------
+    # PROMPT
+    # -----------------------------------------------------
 
-Answer the user's question using the supplied
-document knowledge whenever relevant.
+    prompt = f"""
+You are answering a user's question using
+information from uploaded documents.
 
 User question:
 {original_question}
 
-Retrieved document knowledge:
+Document information:
 {context}
 
-Rules:
-- Give only the final answer.
+Instructions:
+
+- Answer the user's question using the supplied
+  document information.
+- Prefer information directly supported by the
+  supplied documents.
+- Do not invent facts that are not supported.
+- If the supplied documents do not contain enough
+  information, clearly say that the available
+  documents do not contain enough information.
+- Give the final answer directly to the user.
 - Do not mention agents.
 - Do not mention ChromaDB.
 - Do not mention embeddings.
 - Do not mention retrieval.
+- Do not mention vector databases.
 - Do not mention internal prompts.
 - Do not expose internal metadata.
 - Do not describe the internal processing.
-- If the documents do not contain enough information,
-  clearly say that the available documents do not
-  contain enough information.
 """
 
-    response = client.messages.create(
+    # -----------------------------------------------------
+    # CALL GEMINI
+    # -----------------------------------------------------
+
+    response = client.models.generate_content(
         model=LLM_MODEL,
-        max_tokens=1200,
-        temperature=0.2,
-        messages=[
-            {
-                "role": "user",
-                "content": prompt
-            }
-        ]
+        contents=prompt,
+        config=types.GenerateContentConfig(
+            max_output_tokens=1200,
+            temperature=0.2
+        )
     )
 
-    answer_parts = []
+    # -----------------------------------------------------
+    # READ RESPONSE
+    # -----------------------------------------------------
 
-    for content in response.content:
+    answer = (
+        response.text
+        if response and response.text
+        else ""
+    )
 
-        if getattr(
-            content,
-            "type",
-            None
-        ) == "text":
-
-            answer_parts.append(
-                content.text
-            )
-
-    answer = "\n".join(
-        answer_parts
-    ).strip()
+    answer = answer.strip()
 
     if not answer:
 
@@ -833,7 +1194,6 @@ Rules:
 # =========================================================
 # AGENT 4 - COACHING AGENT
 # =========================================================
-
 
 def coaching_agent(
     original_question,
@@ -858,12 +1218,11 @@ def coaching_agent(
 # AGENT 5 - FEEDBACK GENERATION AGENT
 # =========================================================
 
-
 def feedback_generation_agent(
     conversation
 ):
 
-    if anthropic is None:
+    if genai is None:
 
         return (
             "Conversation feedback could not be "
@@ -871,7 +1230,7 @@ def feedback_generation_agent(
             "service is unavailable."
         )
 
-    if not ANTHROPIC_API_KEY:
+    if not GEMINI_API_KEY:
 
         return (
             "Conversation feedback could not be "
@@ -892,8 +1251,8 @@ def feedback_generation_agent(
         conversation_text
     )
 
-    client = anthropic.Anthropic(
-        api_key=ANTHROPIC_API_KEY
+    client = genai.Client(
+        api_key=GEMINI_API_KEY
     )
 
     prompt = f"""
@@ -917,33 +1276,22 @@ Conversation:
 {joined}
 """
 
-    response = client.messages.create(
+    response = client.models.generate_content(
         model=LLM_MODEL,
-        max_tokens=1200,
-        temperature=0.2,
-        messages=[
-            {
-                "role": "user",
-                "content": prompt
-            }
-        ]
+        contents=prompt,
+        config=types.GenerateContentConfig(
+            max_output_tokens=1200,
+            temperature=0.2
+        )
     )
 
-    parts = []
+    feedback = (
+        response.text
+        if response and response.text
+        else ""
+    )
 
-    for content in response.content:
-
-        if getattr(
-            content,
-            "type",
-            None
-        ) == "text":
-
-            parts.append(
-                content.text
-            )
-
-    feedback = "\n".join(parts).strip()
+    feedback = feedback.strip()
 
     if not feedback:
 
@@ -958,10 +1306,13 @@ Conversation:
 # AGENT 6 - ORCHESTRATOR AGENT
 # =========================================================
 
-
 def orchestrator_agent(
     question
 ):
+
+    # -----------------------------------------------------
+    # STEP 1 - QUERY UNDERSTANDING
+    # -----------------------------------------------------
 
     processed_query = (
         query_understanding_agent(
@@ -969,11 +1320,35 @@ def orchestrator_agent(
         )
     )
 
+    # -----------------------------------------------------
+    # STEP 2 - KNOWLEDGE RETRIEVAL
+    # -----------------------------------------------------
+
     retrieved_chunks = (
         knowledge_retrieval_agent(
             processed_query
         )
     )
+
+    print(
+        "RETRIEVED CHUNKS FOR QUESTION:",
+        len(retrieved_chunks)
+    )
+
+    # -----------------------------------------------------
+    # DO NOT CALL LLM WITH EMPTY KNOWLEDGE
+    # -----------------------------------------------------
+
+    if not retrieved_chunks:
+
+        return (
+            "The available documents do not contain "
+            "enough information to answer this question."
+        )
+
+    # -----------------------------------------------------
+    # STEP 3 - RESPONSE GENERATION
+    # -----------------------------------------------------
 
     final_answer = (
         response_generation_agent(
@@ -981,6 +1356,10 @@ def orchestrator_agent(
             retrieved_chunks
         )
     )
+
+    # -----------------------------------------------------
+    # STEP 4 - COACHING
+    # -----------------------------------------------------
 
     coaching_agent(
         question,
@@ -993,7 +1372,6 @@ def orchestrator_agent(
 # =========================================================
 # USER CONVERSATION DATABASE HELPERS
 # =========================================================
-
 
 def get_next_conversation_id(cursor):
 
@@ -1024,10 +1402,6 @@ def get_next_message_id(cursor):
 
     return cursor.fetchone()[0]
 
-
-# ---------------------------------------------------------
-# CREATE A NEW CONVERSATION
-# ---------------------------------------------------------
 
 def create_new_conversation(
     cursor,
@@ -1077,10 +1451,6 @@ def create_new_conversation(
 
     return conversation_id
 
-
-# ---------------------------------------------------------
-# GET OR CREATE CONVERSATION FOR CHAT
-# ---------------------------------------------------------
 
 def get_or_create_conversation(
     cursor,
@@ -1142,18 +1512,10 @@ def get_or_create_conversation(
 
         return conversation_id
 
-    conversation_id = (
-        get_next_conversation_id(
-            cursor
-        )
+    return get_next_conversation_id(
+        cursor
     )
 
-    return conversation_id
-
-
-# ---------------------------------------------------------
-# STORE CHAT MESSAGE
-# ---------------------------------------------------------
 
 def store_chat_message(
     cursor,
@@ -1173,10 +1535,6 @@ def store_chat_message(
         else "New Conversation"
     )
 
-    # -----------------------------------------------------
-    # CHECK WHETHER THIS IS THE FIRST MESSAGE
-    # -----------------------------------------------------
-
     cursor.execute(
         """
         SELECT COUNT(*)
@@ -1194,10 +1552,6 @@ def store_chat_message(
     message_count = cursor.fetchone()[0]
 
     if message_count == 0:
-
-        # -------------------------------------------------
-        # FILL THE EMPTY NEW-CONVERSATION ROW
-        # -------------------------------------------------
 
         cursor.execute(
             """
@@ -1267,10 +1621,6 @@ def store_chat_message(
 
     else:
 
-        # -------------------------------------------------
-        # ADD NEXT MESSAGE TO EXISTING CONVERSATION
-        # -------------------------------------------------
-
         cursor.execute(
             """
             INSERT INTO user_conversations
@@ -1310,10 +1660,6 @@ def store_chat_message(
             )
         )
 
-        # -------------------------------------------------
-        # KEEP CONVERSATION TITLE FROM CHANGING
-        # -------------------------------------------------
-
         cursor.execute(
             """
             UPDATE user_conversations
@@ -1328,10 +1674,6 @@ def store_chat_message(
                 user_id
             )
         )
-
-    # -----------------------------------------------------
-    # UPDATE USER LAST ACTIVITY
-    # -----------------------------------------------------
 
     cursor.execute(
         """
@@ -1350,18 +1692,12 @@ def store_chat_message(
 # HOME PAGE
 # =========================================================
 
-
 @app.get("/")
 def home():
 
     return FileResponse(
         FRONTEND_DIR / "index.html"
     )
-
-
-# =========================================================
-# INDEX.HTML PAGE
-# =========================================================
 
 
 @app.get("/index.html")
@@ -1373,9 +1709,8 @@ def index():
 
 
 # =========================================================
-# ADMIN LOGIN PAGE
+# ADMIN PAGES
 # =========================================================
-
 
 @app.get("/ad_login.html")
 def admin_login_page():
@@ -1383,11 +1718,6 @@ def admin_login_page():
     return FileResponse(
         FRONTEND_DIR / "ad_login.html"
     )
-
-
-# =========================================================
-# ADMIN DASHBOARD PAGE
-# =========================================================
 
 
 @app.get("/ad_dashboard.html")
@@ -1406,11 +1736,6 @@ def admin_dashboard():
     )
 
 
-# =========================================================
-# RAG DOCUMENTATION PAGE
-# =========================================================
-
-
 @app.get("/rag_document.html")
 def rag_document():
 
@@ -1420,9 +1745,8 @@ def rag_document():
 
 
 # =========================================================
-# USER LOGIN PAGE
+# USER PAGES
 # =========================================================
-
 
 @app.get("/user_login.html")
 async def user_login():
@@ -1430,11 +1754,6 @@ async def user_login():
     return FileResponse(
         FRONTEND_DIR / "user_login.html"
     )
-
-
-# =========================================================
-# USER CHAT PAGE
-# =========================================================
 
 
 @app.get("/user_chat.html")
@@ -1448,12 +1767,6 @@ async def user_chat():
 # =========================================================
 # USER AUTHENTICATION
 # =========================================================
-
-
-# ---------------------------------------------------------
-# USER SIGNUP API
-# ---------------------------------------------------------
-
 
 @app.post("/api/auth/register")
 def user_register(data: UserRegister):
@@ -1577,11 +1890,6 @@ def user_register(data: UserRegister):
             connection.close()
 
 
-# ---------------------------------------------------------
-# USER LOGIN API
-# ---------------------------------------------------------
-
-
 @app.post("/api/auth/login")
 def user_login_api(data: UserLogin):
 
@@ -1618,13 +1926,9 @@ def user_login_api(data: UserLogin):
             )
 
         user_id = user[0]
-
         name = user[1]
-
         email = user[2]
-
         password = user[3]
-
         active_status = user[4]
 
         if not active_status:
@@ -1719,11 +2023,6 @@ def user_login_api(data: UserLogin):
             connection.close()
 
 
-# ---------------------------------------------------------
-# USER LOGOUT API
-# ---------------------------------------------------------
-
-
 @app.post("/api/auth/logout")
 def user_logout(
     authorization: str | None = Header(
@@ -1755,11 +2054,6 @@ def user_logout(
             "/index.html"
 
     }
-
-
-# ---------------------------------------------------------
-# USER CURRENT SESSION
-# ---------------------------------------------------------
 
 
 @app.get("/api/auth/me")
@@ -1795,12 +2089,6 @@ def user_me(
 # USER CONVERSATIONS
 # =========================================================
 
-
-# ---------------------------------------------------------
-# CREATE NEW CONVERSATION / NEW CHAT
-# ---------------------------------------------------------
-
-
 @app.post("/api/conversations")
 def create_conversation(
     data: NewConversation,
@@ -1813,10 +2101,6 @@ def create_conversation(
     cursor = None
 
     try:
-
-        # -------------------------------------------------
-        # AUTHENTICATE USER
-        # -------------------------------------------------
 
         user = get_authenticated_user(
             authorization
@@ -1837,10 +2121,6 @@ def create_conversation(
         if not title:
 
             title = "New Conversation"
-
-        # -------------------------------------------------
-        # CREATE NEW CONVERSATION ID
-        # -------------------------------------------------
 
         conversation_id = (
             create_new_conversation(
@@ -1907,11 +2187,6 @@ def create_conversation(
             connection.close()
 
 
-# ---------------------------------------------------------
-# GET CURRENT USER CONVERSATIONS
-# ---------------------------------------------------------
-
-
 @app.get("/api/conversations")
 def get_current_user_conversations(
     authorization: str | None = Header(
@@ -1923,10 +2198,6 @@ def get_current_user_conversations(
     cursor = None
 
     try:
-
-        # -------------------------------------------------
-        # AUTHENTICATE USER
-        # -------------------------------------------------
 
         user = get_authenticated_user(
             authorization
@@ -2049,11 +2320,6 @@ def get_current_user_conversations(
             connection.close()
 
 
-# ---------------------------------------------------------
-# GET ONE USER CONVERSATION
-# ---------------------------------------------------------
-
-
 @app.get(
     "/api/conversations/{conversation_id}"
 )
@@ -2069,10 +2335,6 @@ def get_current_user_conversation(
 
     try:
 
-        # -------------------------------------------------
-        # AUTHENTICATE USER
-        # -------------------------------------------------
-
         user = get_authenticated_user(
             authorization
         )
@@ -2082,11 +2344,6 @@ def get_current_user_conversation(
         connection = get_db_connection()
 
         cursor = connection.cursor()
-
-        # -------------------------------------------------
-        # IMPORTANT:
-        # CONVERSATION MUST BELONG TO AUTHENTICATED USER
-        # -------------------------------------------------
 
         cursor.execute(
             """
@@ -2129,10 +2386,6 @@ def get_current_user_conversation(
                 status_code=400,
                 detail="Conversation is inactive"
             )
-
-        # -------------------------------------------------
-        # GET MESSAGES
-        # -------------------------------------------------
 
         cursor.execute(
             """
@@ -2254,7 +2507,6 @@ def get_current_user_conversation(
 # USER CHAT MESSAGE API
 # =========================================================
 
-
 @app.post("/api/chat/message")
 def send_chat_message(
     data: ChatMessage,
@@ -2289,10 +2541,6 @@ def send_chat_message(
             authorization
         )
 
-        # -------------------------------------------------
-        # NEVER TAKE user_id FROM FRONTEND
-        # -------------------------------------------------
-
         user_id = user["user_id"]
 
         connection = get_db_connection()
@@ -2300,7 +2548,7 @@ def send_chat_message(
         cursor = connection.cursor()
 
         # -------------------------------------------------
-        # USE EXISTING CONVERSATION
+        # GET / CREATE CONVERSATION
         # -------------------------------------------------
 
         if data.conversation_id is not None:
@@ -2315,11 +2563,6 @@ def send_chat_message(
 
         else:
 
-            # -------------------------------------------------
-            # IF FRONTEND SENDS NO CONVERSATION ID,
-            # CREATE A NEW CONVERSATION
-            # -------------------------------------------------
-
             conversation_id = (
                 create_new_conversation(
                     cursor,
@@ -2331,7 +2574,7 @@ def send_chat_message(
         connection.commit()
 
         # -------------------------------------------------
-        # RUN RAG / AGENT PIPELINE
+        # RUN RAG PIPELINE
         # -------------------------------------------------
 
         try:
@@ -2367,7 +2610,7 @@ def send_chat_message(
             )
 
         # -------------------------------------------------
-        # STORE QUESTION + AI ANSWER
+        # STORE MESSAGE
         # -------------------------------------------------
 
         message_id = store_chat_message(
@@ -2381,7 +2624,7 @@ def send_chat_message(
         connection.commit()
 
         # -------------------------------------------------
-        # GET UPDATED TITLE
+        # GET TITLE
         # -------------------------------------------------
 
         cursor.execute(
@@ -2466,7 +2709,6 @@ def send_chat_message(
 # ADMIN LOGIN
 # =========================================================
 
-
 @app.post("/api/admin/login")
 def admin_login(data: AdminLogin):
 
@@ -2503,13 +2745,9 @@ def admin_login(data: AdminLogin):
             )
 
         admin_id = admin[0]
-
         name = admin[1]
-
         email = admin[2]
-
         password = admin[3]
-
         active_status = admin[4]
 
         if not active_status:
@@ -2557,12 +2795,6 @@ def admin_login(data: AdminLogin):
 # RAG DOCUMENT MANAGEMENT
 # =========================================================
 
-
-# ---------------------------------------------------------
-# UPLOAD RAG DOCUMENT
-# ---------------------------------------------------------
-
-
 @app.post("/api/documents/upload")
 async def upload_document(
     file: UploadFile = File(...),
@@ -2574,6 +2806,10 @@ async def upload_document(
 
     try:
 
+        # -------------------------------------------------
+        # CHECK PDF
+        # -------------------------------------------------
+
         if file.content_type != "application/pdf":
 
             raise HTTPException(
@@ -2581,11 +2817,30 @@ async def upload_document(
                 detail="Only PDF files are allowed"
             )
 
+        # -------------------------------------------------
+        # READ FILE
+        # -------------------------------------------------
+
         file_data = await file.read()
+
+        if not file_data:
+
+            raise HTTPException(
+                status_code=400,
+                detail="Uploaded PDF is empty"
+            )
+
+        # -------------------------------------------------
+        # DATABASE CONNECTION
+        # -------------------------------------------------
 
         connection = get_db_connection()
 
         cursor = connection.cursor()
+
+        # -------------------------------------------------
+        # CHECK ADMIN
+        # -------------------------------------------------
 
         cursor.execute(
             """
@@ -2609,6 +2864,10 @@ async def upload_document(
             )
 
         file_size = len(file_data)
+
+        # -------------------------------------------------
+        # INSERT DOCUMENT INTO POSTGRESQL
+        # -------------------------------------------------
 
         cursor.execute(
             """
@@ -2655,26 +2914,33 @@ async def upload_document(
             )
         )
 
-        connection.commit()
-
         # -------------------------------------------------
-        # PROCESS PDF AND ADD TO CHROMADB
+        # PROCESS PDF
         # -------------------------------------------------
 
-        chunks_added = 0
+        if PdfReader is None:
+
+            raise HTTPException(
+                status_code=500,
+                detail="PDF processing service is unavailable"
+            )
 
         try:
 
-            if PdfReader is None:
-
-                raise RuntimeError(
-                    "pypdf is not installed"
-                )
+            print(
+                "PROCESSING PDF:",
+                file.filename
+            )
 
             reader = PdfReader(
-                __import__("io").BytesIO(
+                io.BytesIO(
                     file_data
                 )
+            )
+
+            print(
+                "PDF PAGE COUNT:",
+                len(reader.pages)
             )
 
             pages = []
@@ -2687,7 +2953,13 @@ async def upload_document(
 
                     text = page.extract_text()
 
-                except Exception:
+                except Exception as error:
+
+                    print(
+                        f"PAGE {page_index + 1} "
+                        f"TEXT EXTRACTION ERROR:",
+                        error
+                    )
 
                     text = ""
 
@@ -2698,6 +2970,20 @@ async def upload_document(
                     )
                 )
 
+            extracted_characters = sum(
+                len(page_text)
+                for _, page_text in pages
+            )
+
+            print(
+                "TOTAL EXTRACTED CHARACTERS:",
+                extracted_characters
+            )
+
+            # -------------------------------------------------
+            # ADD TO CHROMADB
+            # -------------------------------------------------
+
             chunks_added = (
                 add_document_to_chromadb(
                     document_id,
@@ -2706,6 +2992,21 @@ async def upload_document(
                 )
             )
 
+            # -------------------------------------------------
+            # IMPORTANT:
+            # DO NOT REPORT SUCCESS IF ZERO CHUNKS
+            # -------------------------------------------------
+
+            if chunks_added == 0:
+
+                raise RuntimeError(
+                    "No text chunks were created from the PDF"
+                )
+
+        except HTTPException:
+
+            raise
+
         except Exception as error:
 
             print(
@@ -2713,7 +3014,52 @@ async def upload_document(
                 error
             )
 
-            chunks_added = 0
+            # Remove the PostgreSQL document because
+            # indexing was unsuccessful.
+            try:
+
+                cursor.execute(
+                    """
+                    DELETE FROM rag_documents
+                    WHERE document_id = %s
+                    """,
+                    (document_id,)
+                )
+
+            except Exception as delete_error:
+
+                print(
+                    "DOCUMENT CLEANUP ERROR:",
+                    delete_error
+                )
+
+            connection.rollback()
+
+            raise HTTPException(
+                status_code=500,
+                detail="Unable to add document to the knowledge base"
+            )
+
+        # -------------------------------------------------
+        # COMMIT ONLY AFTER CHROMADB SUCCESS
+        # -------------------------------------------------
+
+        connection.commit()
+
+        print(
+            "DOCUMENT UPLOAD SUCCESS:",
+            file.filename
+        )
+
+        print(
+            "DOCUMENT ID:",
+            document_id
+        )
+
+        print(
+            "CHUNKS ADDED:",
+            chunks_added
+        )
 
         return {
 
@@ -2779,7 +3125,6 @@ async def upload_document(
 # =========================================================
 # GET ALL RAG DOCUMENTS
 # =========================================================
-
 
 @app.get("/api/documents")
 def get_documents():
@@ -2876,9 +3221,8 @@ def get_documents():
 
 
 # =========================================================
-# GET ALL DETAILS OF ONE RAG DOCUMENT
+# GET ONE RAG DOCUMENT
 # =========================================================
-
 
 @app.get("/api/documents/{document_id}")
 def get_document_details(
@@ -3012,7 +3356,6 @@ def get_document_details(
 # =========================================================
 # VIEW PDF DOCUMENT
 # =========================================================
-
 
 @app.get(
     "/api/documents/{document_id}/file",
@@ -3372,7 +3715,6 @@ def view_document(document_id: int):
 # REMOVE RAG DOCUMENT
 # =========================================================
 
-
 @app.put("/api/documents/{document_id}/remove")
 def remove_document(
     document_id: int
@@ -3405,23 +3747,9 @@ def remove_document(
                 detail="Document not found"
             )
 
-        try:
-
-            delete_document(
-                document_id
-            )
-
-        except Exception as error:
-
-            print(
-                "REMOVE DOCUMENT CHROMADB ERROR:",
-                error
-            )
-
-            raise HTTPException(
-                status_code=500,
-                detail="Unable to remove document from knowledge base"
-            )
+        delete_document(
+            document_id
+        )
 
         cursor.execute(
             """
@@ -3480,7 +3808,6 @@ def remove_document(
 # PERMANENTLY DELETE RAG DOCUMENT
 # =========================================================
 
-
 @app.delete(
     "/api/documents/{document_id}/permanent"
 )
@@ -3516,23 +3843,9 @@ def permanently_delete_document(
                 detail="Removed document not found"
             )
 
-        try:
-
-            delete_document(
-                document_id
-            )
-
-        except Exception as error:
-
-            print(
-                "PERMANENT CHROMADB DELETE ERROR:",
-                error
-            )
-
-            raise HTTPException(
-                status_code=500,
-                detail="Unable to remove document from knowledge base"
-            )
+        delete_document(
+            document_id
+        )
 
         cursor.execute(
             """
@@ -3595,12 +3908,6 @@ def permanently_delete_document(
 # =========================================================
 # ADMIN CHAT HISTORY
 # =========================================================
-
-
-# ---------------------------------------------------------
-# ALL USERS
-# ---------------------------------------------------------
-
 
 @app.get(
     "/api/admin/chat-history/users"
@@ -3707,11 +4014,6 @@ def get_chat_history_users():
 
         if connection:
             connection.close()
-
-
-# =========================================================
-# ACTIVE USERS
-# =========================================================
 
 
 @app.get(
@@ -3827,11 +4129,6 @@ def get_active_chat_users():
             connection.close()
 
 
-# =========================================================
-# FREQUENT USERS
-# =========================================================
-
-
 @app.get(
     "/api/admin/chat-history/frequent-users"
 )
@@ -3942,11 +4239,6 @@ def get_frequent_chat_users():
 
         if connection:
             connection.close()
-
-
-# =========================================================
-# GET CONVERSATIONS OF SELECTED USER
-# =========================================================
 
 
 @app.get(
@@ -4100,11 +4392,6 @@ def get_user_conversations(
             connection.close()
 
 
-# =========================================================
-# GET MESSAGES OF ONE CONVERSATION
-# =========================================================
-
-
 @app.get(
     "/api/admin/chat-history/conversation/{conversation_id}"
 )
@@ -4221,7 +4508,6 @@ def get_admin_conversation_messages(
 # GENERATED FEEDBACK
 # =========================================================
 
-
 def create_generated_feedback_table(
     cursor
 ):
@@ -4246,11 +4532,6 @@ def create_generated_feedback_table(
         )
         """
     )
-
-
-# =========================================================
-# SAVE GENERATED FEEDBACK
-# =========================================================
 
 
 @app.post("/api/admin/feedback/save")
@@ -4342,11 +4623,6 @@ def save_generated_feedback(
 
         if connection:
             connection.close()
-
-
-# =========================================================
-# GENERATE FEEDBACK FOR ONE CONVERSATION
-# =========================================================
 
 
 @app.post(
@@ -4535,7 +4811,6 @@ def generate_feedback(
 # FEEDBACK GENERATOR USER LISTS
 # =========================================================
 
-
 @app.get("/api/admin/feedback/users")
 def get_feedback_users():
 
@@ -4581,7 +4856,6 @@ def get_feedback_conversation(
 # =========================================================
 # GENERATED FEEDBACK OVERVIEW
 # =========================================================
-
 
 @app.get("/api/admin/feedback")
 def get_generated_feedback():
@@ -4697,11 +4971,6 @@ def get_generated_feedback():
 
         if connection:
             connection.close()
-
-
-# =========================================================
-# GENERATED FEEDBACK FOR ONE USER
-# =========================================================
 
 
 @app.get(
@@ -4830,7 +5099,6 @@ def get_user_generated_feedback(
 # =========================================================
 # ADMIN STATISTICS
 # =========================================================
-
 
 @app.get("/api/admin/statistics")
 def admin_statistics():

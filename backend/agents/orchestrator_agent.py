@@ -23,50 +23,74 @@ class OrchestratorAgent:
 
     def __init__(self):
 
-        self.query_agent = (
+        self.query_agent=(
             QueryUnderstandingAgent()
         )
 
-        self.retrieval_agent = (
+        self.retrieval_agent=(
             KnowledgeRetrievalAgent()
         )
 
-        self.response_agent = (
+        self.response_agent=(
             ResponseGenerationAgent()
         )
 
-        self.coaching_agent = (
+        self.coaching_agent=(
             CoachingAgent()
         )
 
-        self.feedback_agent = (
+        self.feedback_agent=(
             FeedbackGenerationAgent()
         )
 
 
-    def process_chat(self, user_query):
+    def process_chat(self,user_query):
 
-        # Agent 1
-        query_result = (
+        # ============================================
+        # AGENT 1 - QUERY UNDERSTANDING
+        # ============================================
+
+        query_result=(
             self.query_agent.understand(
                 user_query
             )
         )
 
-        # Agent 2
-        retrieval_result = (
+
+        # ============================================
+        # HANDLE CASUAL CONVERSATION
+        # ============================================
+
+        if query_result["intent"]=="casual_conversation":
+
+            return (
+                "Hi! 👋 How can I help you today? "
+                "What would you like to know?"
+            )
+
+
+        # ============================================
+        # AGENT 2 - KNOWLEDGE RETRIEVAL
+        # ============================================
+
+        retrieval_result=(
             self.retrieval_agent.retrieve(
                 query_result
             )
         )
 
-        # Agent 3
-        response_result = (
+
+        # ============================================
+        # AGENT 3 - RESPONSE GENERATION
+        # ============================================
+
+        response_result=(
             self.response_agent.generate(
                 query_result,
                 retrieval_result
             )
         )
+
 
         return response_result
 

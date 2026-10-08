@@ -1,6 +1,6 @@
 import os
 from dotenv import load_dotenv
-from anthropic import Anthropic
+from google import genai
 
 load_dotenv()
 
@@ -9,8 +9,8 @@ class ResponseGenerationAgent:
 
     def __init__(self):
 
-        self.client=Anthropic(
-            api_key=os.getenv("ANTHROPIC_API_KEY")
+        self.client=genai.Client(
+            api_key=os.getenv("GEMINI_API_KEY")
         )
 
     def generate(
@@ -20,7 +20,6 @@ class ResponseGenerationAgent:
     ):
 
         query=query_data["original_query"]
-
         chunks=retrieval_data["chunks"]
 
         context="\n\n".join(chunks)
@@ -52,15 +51,9 @@ say that the information was not found in the knowledge base.
 
     def call_llm(self,prompt):
 
-        response=self.client.messages.create(
-            model="claude-sonnet-4-6",
-            max_tokens=1000,
-            messages=[
-                {
-                    "role":"user",
-                    "content":prompt
-                }
-            ]
+        response=self.client.models.generate_content(
+            model="gemini-3.8-flash",
+            contents=prompt
         )
 
-        return response.content[0].text.strip()
+        return response.text.strip()
