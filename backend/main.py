@@ -103,38 +103,169 @@ def get_db_connection():
 
 def ensure_conversation_schema():
 
+    """
+    Keep the existing table and its data, but make message_id the
+    row-level primary key so multiple messages can share one conversation_id.
+    Existing messages for the same user are consolidated under one
+    conversation_id, as required by the single-conversation-per-user design.
+    """
+
     connection = None
     cursor = None
 
     try:
-
         connection = get_db_connection()
         cursor = connection.cursor()
 
+        cursor.execute("SELECT to_regclass('public.user_conversations')")
+        if cursor.fetchone()[0] is None:
+            connection.commit()
+            return
+
         cursor.execute(
             """
-            ALTER TABLE user_conversations
-            ALTER COLUMN message_id DROP NOT NULL
+            SELECT conname, pg_get_constraintdef(oid)
+            FROM pg_constraint
+            WHERE conrelid = 'public.user_conversations'::regclass
+              AND contype = 'p'
+            """
+        )
+        primary_key = cursor.fetchone()
+
+        if primary_key and "message_id" not in primary_key[1]:
+            constraint_name = primary_key[0].replace('"', '""')
+            cursor.execute(
+                f'ALTER TABLE public.user_conversations '
+                f'DROP CONSTRAINT "{constraint_name}"'
+            )
+
+        cursor.execute(
+            """
+            CREATE SEQUENCE IF NOT EXISTS
+                public.user_conversations_message_id_seq
+            """
+        )
+        cursor.execute(
+            """
+            ALTER TABLE public.user_conversations
+            ALTER COLUMN message_id
+            SET DEFAULT nextval(
+                'public.user_conversations_message_id_seq'::regclass
+            )
+            """
+        )
+        cursor.execute(
+            """
+            SELECT setval(
+                'public.user_conversations_message_id_seq',
+                GREATEST(COALESCE(
+                    (SELECT MAX(message_id)
+                     FROM public.user_conversations), 0
+                ), 1),
+                COALESCE(
+                    (SELECT MAX(message_id)
+                     FROM public.user_conversations), 0
+                ) > 0
+            )
+            """
+        )
+        cursor.execute(
+            """
+            UPDATE public.user_conversations
+            SET message_id = nextval(
+                'public.user_conversations_message_id_seq'::regclass
+            )
+            WHERE message_id IS NULL
+            """
+        )
+        cursor.execute(
+            """
+            ALTER TABLE public.user_conversations
+            ALTER COLUMN message_id SET NOT NULL
+            """
+        )
+
+        cursor.execute(
+            """
+            SELECT EXISTS (
+                SELECT 1
+                FROM pg_constraint
+                WHERE conrelid = 'public.user_conversations'::regclass
+                  AND contype = 'p'
+            )
+            """
+        )
+        if not cursor.fetchone()[0]:
+            cursor.execute(
+                """
+                ALTER TABLE public.user_conversations
+                ADD CONSTRAINT user_conversations_pkey
+                PRIMARY KEY (message_id)
+                """
+            )
+
+        # Preserve every message but map each user's old conversations to one ID.
+        cursor.execute(
+            """
+            WITH user_conversation_map AS (
+                SELECT user_id, MIN(conversation_id) AS conversation_id
+                FROM public.user_conversations
+                WHERE user_id IS NOT NULL
+                  AND conversation_id IS NOT NULL
+                GROUP BY user_id
+            )
+            UPDATE public.user_conversations AS uc
+            SET conversation_id = m.conversation_id
+            FROM user_conversation_map AS m
+            WHERE uc.user_id = m.user_id
+              AND uc.conversation_id IS DISTINCT FROM m.conversation_id
+            """
+        )
+
+        cursor.execute(
+            """
+            WITH first_titles AS (
+                SELECT DISTINCT ON (user_id) user_id, title
+                FROM public.user_conversations
+                WHERE user_id IS NOT NULL
+                  AND title IS NOT NULL
+                  AND message_id IS NOT NULL
+                ORDER BY user_id, message_id ASC
+            )
+            UPDATE public.user_conversations AS uc
+            SET title = ft.title
+            FROM first_titles AS ft
+            WHERE uc.user_id = ft.user_id
+              AND uc.title IS DISTINCT FROM ft.title
+            """
+        )
+
+        cursor.execute(
+            """
+            CREATE INDEX IF NOT EXISTS
+                idx_user_conversations_user_id
+            ON public.user_conversations(user_id)
+            """
+        )
+        cursor.execute(
+            """
+            CREATE INDEX IF NOT EXISTS
+                idx_user_conversations_conversation_id
+            ON public.user_conversations(conversation_id)
             """
         )
 
         connection.commit()
+        print("USER CONVERSATION SCHEMA CHECK COMPLETE")
 
     except Exception as error:
-
         if connection:
             connection.rollback()
-
-        print(
-            "CONVERSATION SCHEMA CHECK ERROR:",
-            error
-        )
+        print("CONVERSATION SCHEMA CHECK ERROR:", error)
 
     finally:
-
         if cursor:
             cursor.close()
-
         if connection:
             connection.close()
 
@@ -150,7 +281,7 @@ CONVERSATION_INACTIVITY_MINUTES = 30
 
 LLM_MODEL = os.getenv(
     "LLM_MODEL",
-    "gemini-3.8-flash"
+    "gemini-3-flash"
 )
 
 GEMINI_API_KEY = os.getenv(
@@ -1377,10 +1508,7 @@ def get_next_conversation_id(cursor):
 
     cursor.execute(
         """
-        SELECT COALESCE(
-            MAX(conversation_id),
-            0
-        ) + 1
+        SELECT COALESCE(MAX(conversation_id), 0) + 1
         FROM user_conversations
         """
     )
@@ -1392,11 +1520,9 @@ def get_next_message_id(cursor):
 
     cursor.execute(
         """
-        SELECT COALESCE(
-            MAX(message_id),
-            0
-        ) + 1
-        FROM user_conversations
+        SELECT nextval(
+            'public.user_conversations_message_id_seq'::regclass
+        )
         """
     )
 
@@ -1409,44 +1535,38 @@ def create_new_conversation(
     title="New Conversation"
 ):
 
-    conversation_id = get_next_conversation_id(
-        cursor
+    # One persistent conversation per user: reuse it if it already exists.
+    cursor.execute(
+        """
+        SELECT MIN(conversation_id)
+        FROM user_conversations
+        WHERE user_id = %s
+          AND conversation_id IS NOT NULL
+        """,
+        (user_id,)
     )
+
+    existing = cursor.fetchone()
+    if existing and existing[0] is not None:
+        return existing[0]
+
+    conversation_id = get_next_conversation_id(cursor)
+    placeholder_message_id = get_next_message_id(cursor)
 
     cursor.execute(
         """
         INSERT INTO user_conversations
         (
-            conversation_id,
-            user_id,
-            title,
-            created_at,
-            updated_at,
-            active_status,
-            message_id,
-            user_message,
-            ai_response,
+            conversation_id, user_id, title, created_at, updated_at,
+            active_status, message_id, user_message, ai_response,
             message_created_at
         )
-        VALUES
-        (
-            %s,
-            %s,
-            %s,
-            CURRENT_TIMESTAMP,
-            CURRENT_TIMESTAMP,
-            TRUE,
-            NULL,
-            NULL,
-            NULL,
-            NULL
+        VALUES (
+            %s, %s, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP,
+            TRUE, %s, NULL, NULL, NULL
         )
         """,
-        (
-            conversation_id,
-            user_id,
-            title
-        )
+        (conversation_id, user_id, title, placeholder_message_id)
     )
 
     return conversation_id
@@ -1459,37 +1579,25 @@ def get_or_create_conversation(
 ):
 
     if conversation_id is not None:
-
         cursor.execute(
             """
-            SELECT
-                conversation_id,
-                user_id,
-                title,
-                active_status
+            SELECT conversation_id, user_id, active_status
             FROM user_conversations
-            WHERE conversation_id = %s
-            AND user_id = %s
+            WHERE conversation_id = %s AND user_id = %s
             ORDER BY message_id ASC NULLS FIRST
             LIMIT 1
             """,
-            (
-                conversation_id,
-                user_id
-            )
+            (conversation_id, user_id)
         )
 
         existing = cursor.fetchone()
-
         if not existing:
-
             raise HTTPException(
                 status_code=404,
                 detail="Invalid conversation"
             )
 
-        if existing[3] is False:
-
+        if existing[2] is False:
             raise HTTPException(
                 status_code=400,
                 detail="Conversation is inactive"
@@ -1498,23 +1606,15 @@ def get_or_create_conversation(
         cursor.execute(
             """
             UPDATE user_conversations
-            SET
-                updated_at = CURRENT_TIMESTAMP,
+            SET updated_at = CURRENT_TIMESTAMP,
                 active_status = TRUE
-            WHERE conversation_id = %s
-            AND user_id = %s
+            WHERE conversation_id = %s AND user_id = %s
             """,
-            (
-                conversation_id,
-                user_id
-            )
+            (conversation_id, user_id)
         )
-
         return conversation_id
 
-    return get_next_conversation_id(
-        cursor
-    )
+    return create_new_conversation(cursor, user_id, "My Conversation")
 
 
 def store_chat_message(
@@ -1525,161 +1625,131 @@ def store_chat_message(
     ai_response
 ):
 
-    message_id = get_next_message_id(
-        cursor
-    )
+    title = user_message[:100] if user_message else "My Conversation"
 
-    title = (
-        user_message[:100]
-        if user_message
-        else "New Conversation"
-    )
-
+    # Count actual messages, not the empty placeholder row.
     cursor.execute(
         """
         SELECT COUNT(*)
         FROM user_conversations
         WHERE conversation_id = %s
-        AND user_id = %s
-        AND message_id IS NOT NULL
+          AND user_id = %s
+          AND user_message IS NOT NULL
         """,
-        (
-            conversation_id,
-            user_id
-        )
+        (conversation_id, user_id)
     )
-
     message_count = cursor.fetchone()[0]
 
-    if message_count == 0:
+    if message_count > 0:
+        cursor.execute(
+            """
+            SELECT title
+            FROM user_conversations
+            WHERE conversation_id = %s
+              AND user_id = %s
+              AND user_message IS NOT NULL
+            ORDER BY message_created_at ASC, message_id ASC
+            LIMIT 1
+            """,
+            (conversation_id, user_id)
+        )
+        title_row = cursor.fetchone()
+        if title_row and title_row[0]:
+            title = title_row[0]
 
+        message_id = get_next_message_id(cursor)
+        cursor.execute(
+            """
+            INSERT INTO user_conversations
+            (
+                message_id, conversation_id, user_id, title,
+                user_message, ai_response, created_at, updated_at,
+                active_status, message_created_at
+            )
+            VALUES (
+                %s, %s, %s, %s, %s, %s,
+                CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, TRUE,
+                CURRENT_TIMESTAMP
+            )
+            """,
+            (
+                message_id, conversation_id, user_id, title,
+                user_message, ai_response
+            )
+        )
+
+    else:
+        # Populate the existing placeholder row so the conversation_id remains
+        # stable and message_id remains the primary key.
         cursor.execute(
             """
             UPDATE user_conversations
-            SET
-                message_id = %s,
-                title = %s,
+            SET title = %s,
                 user_message = %s,
                 ai_response = %s,
                 updated_at = CURRENT_TIMESTAMP,
                 active_status = TRUE,
                 message_created_at = CURRENT_TIMESTAMP
-            WHERE conversation_id = %s
-            AND user_id = %s
-            AND message_id IS NULL
+            WHERE message_id = (
+                SELECT message_id
+                FROM user_conversations
+                WHERE conversation_id = %s
+                  AND user_id = %s
+                  AND user_message IS NULL
+                ORDER BY message_id ASC
+                LIMIT 1
+            )
+              AND conversation_id = %s
+              AND user_id = %s
+            RETURNING message_id
             """,
             (
-                message_id,
-                title,
-                user_message,
-                ai_response,
-                conversation_id,
-                user_id
+                title, user_message, ai_response,
+                conversation_id, user_id,
+                conversation_id, user_id
             )
         )
+        saved = cursor.fetchone()
 
-        if cursor.rowcount == 0:
-
+        if saved:
+            message_id = saved[0]
+        else:
+            message_id = get_next_message_id(cursor)
             cursor.execute(
                 """
                 INSERT INTO user_conversations
                 (
-                    message_id,
-                    conversation_id,
-                    user_id,
-                    title,
-                    user_message,
-                    ai_response,
-                    created_at,
-                    updated_at,
-                    active_status,
-                    message_created_at
+                    message_id, conversation_id, user_id, title,
+                    user_message, ai_response, created_at, updated_at,
+                    active_status, message_created_at
                 )
-                VALUES
-                (
-                    %s,
-                    %s,
-                    %s,
-                    %s,
-                    %s,
-                    %s,
-                    CURRENT_TIMESTAMP,
-                    CURRENT_TIMESTAMP,
-                    TRUE,
+                VALUES (
+                    %s, %s, %s, %s, %s, %s,
+                    CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, TRUE,
                     CURRENT_TIMESTAMP
                 )
                 """,
                 (
-                    message_id,
-                    conversation_id,
-                    user_id,
-                    title,
-                    user_message,
-                    ai_response
+                    message_id, conversation_id, user_id, title,
+                    user_message, ai_response
                 )
             )
 
-    else:
-
-        cursor.execute(
-            """
-            INSERT INTO user_conversations
-            (
-                message_id,
-                conversation_id,
-                user_id,
-                title,
-                user_message,
-                ai_response,
-                created_at,
-                updated_at,
-                active_status,
-                message_created_at
-            )
-            VALUES
-            (
-                %s,
-                %s,
-                %s,
-                %s,
-                %s,
-                %s,
-                CURRENT_TIMESTAMP,
-                CURRENT_TIMESTAMP,
-                TRUE,
-                CURRENT_TIMESTAMP
-            )
-            """,
-            (
-                message_id,
-                conversation_id,
-                user_id,
-                title,
-                user_message,
-                ai_response
-            )
-        )
-
-        cursor.execute(
-            """
-            UPDATE user_conversations
-            SET
-                updated_at = CURRENT_TIMESTAMP,
-                active_status = TRUE
-            WHERE conversation_id = %s
-            AND user_id = %s
-            """,
-            (
-                conversation_id,
-                user_id
-            )
-        )
+    cursor.execute(
+        """
+        UPDATE user_conversations
+        SET updated_at = CURRENT_TIMESTAMP,
+            active_status = TRUE
+        WHERE conversation_id = %s
+          AND user_id = %s
+        """,
+        (conversation_id, user_id)
+    )
 
     cursor.execute(
         """
         UPDATE user_access
-        SET
-            last_activity = CURRENT_TIMESTAMP
+        SET last_activity = CURRENT_TIMESTAMP
         WHERE user_id = %s
         """,
         (user_id,)
@@ -2218,7 +2288,7 @@ def get_current_user_conversations(
                 MIN(created_at) AS created_at,
                 MAX(updated_at) AS updated_at,
                 BOOL_OR(active_status) AS active_status,
-                COUNT(message_id) AS message_count,
+                COUNT(user_message) AS message_count,
                 MAX(message_created_at) AS last_message_at
 
             FROM user_conversations
@@ -2320,6 +2390,109 @@ def get_current_user_conversations(
             connection.close()
 
 
+@app.get("/api/conversations/current")
+def get_current_conversation(
+    authorization: str | None = Header(default=None)
+):
+    """Return the user's single persistent conversation and its messages."""
+
+    connection = None
+    cursor = None
+
+    try:
+        user = get_authenticated_user(authorization)
+        user_id = user["user_id"]
+        connection = get_db_connection()
+        cursor = connection.cursor()
+
+        conversation_id = create_new_conversation(
+            cursor, user_id, "My Conversation"
+        )
+        connection.commit()
+
+        cursor.execute(
+            """
+            SELECT conversation_id, user_id, title,
+                   MIN(created_at) AS created_at,
+                   MAX(updated_at) AS updated_at,
+                   BOOL_OR(active_status) AS active_status
+            FROM user_conversations
+            WHERE conversation_id = %s AND user_id = %s
+            GROUP BY conversation_id, user_id, title
+            ORDER BY MIN(message_id) NULLS FIRST
+            LIMIT 1
+            """,
+            (conversation_id, user_id)
+        )
+        conversation = cursor.fetchone()
+
+        if not conversation:
+            raise HTTPException(
+                status_code=404,
+                detail="Conversation not found"
+            )
+
+        cursor.execute(
+            """
+            SELECT message_id, user_message, ai_response, message_created_at
+            FROM user_conversations
+            WHERE conversation_id = %s
+              AND user_id = %s
+              AND message_id IS NOT NULL
+              AND user_message IS NOT NULL
+            ORDER BY message_created_at ASC, message_id ASC
+            """,
+            (conversation_id, user_id)
+        )
+        rows = cursor.fetchall()
+
+        messages = [
+            {
+                "message_id": row[0],
+                "user_message": row[1],
+                "ai_response": row[2],
+                "message_created_at": row[3].isoformat() if row[3] else None
+            }
+            for row in rows
+        ]
+
+        return {
+            "success": True,
+            "user_id": user_id,
+            "name": user["name"],
+            "email": user["email"],
+            "conversation": {
+                "conversation_id": conversation[0],
+                "user_id": conversation[1],
+                "title": conversation[2] or "My Conversation",
+                "created_at": conversation[3].isoformat() if conversation[3] else None,
+                "updated_at": conversation[4].isoformat() if conversation[4] else None,
+                "active_status": conversation[5]
+            },
+            "messages": messages
+        }
+
+    except HTTPException:
+        if connection:
+            connection.rollback()
+        raise
+
+    except Exception as error:
+        print("GET CURRENT CONVERSATION ERROR:", error)
+        if connection:
+            connection.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail="Unable to load conversation history"
+        )
+
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
+
 @app.get(
     "/api/conversations/{conversation_id}"
 )
@@ -2402,6 +2575,7 @@ def get_current_user_conversation(
             WHERE conversation_id = %s
             AND user_id = %s
             AND message_id IS NOT NULL
+            AND user_message IS NOT NULL
 
             ORDER BY
                 message_created_at ASC,
@@ -2564,10 +2738,10 @@ def send_chat_message(
         else:
 
             conversation_id = (
-                create_new_conversation(
+                get_or_create_conversation(
                     cursor,
                     user_id,
-                    "New Conversation"
+                    None
                 )
             )
 
@@ -2649,7 +2823,6 @@ def send_chat_message(
             if title_row
             else "New Conversation"
         )
-
 
         return {
 
