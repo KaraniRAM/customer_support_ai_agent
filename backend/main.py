@@ -7,7 +7,7 @@ from fastapi.responses import FileResponse, Response, HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pathlib import Path
 from pydantic import BaseModel
-
+import ollama
 import psycopg2
 import json
 import base64
@@ -281,7 +281,7 @@ CONVERSATION_INACTIVITY_MINUTES = 30
 
 LLM_MODEL = os.getenv(
     "LLM_MODEL",
-    "gemini-3-flash"
+    "gemini-2.5-flash"
 )
 
 GEMINI_API_KEY = os.getenv(
@@ -1149,13 +1149,15 @@ def query_understanding_agent(
 # AGENT 2 - KNOWLEDGE RETRIEVAL AGENT
 # =========================================================
 
-def knowledge_retrieval_agent(
-    processed_query
-):
+def knowledge_retrieval_agent(processed_query):
 
-    cleaned_question = processed_query[
-        "cleaned_question"
-    ]
+    cleaned_question = processed_query.get(
+        "cleaned_question",
+        ""
+    ).strip()
+
+    if not cleaned_question:
+        return []
 
     return retrieve_relevant_chunks(
         cleaned_question,
@@ -1163,8 +1165,12 @@ def knowledge_retrieval_agent(
     )
 
 
+import ollama
+
+
 # =========================================================
 # AGENT 3 - RESPONSE GENERATION AGENT
+# LOCAL LLM - NO EXTERNAL API
 # =========================================================
 
 def response_generation_agent(
@@ -1172,155 +1178,112 @@ def response_generation_agent(
     retrieved_chunks
 ):
 
-    if genai is None:
+    question = (original_question or "").strip()
 
-        raise RuntimeError(
-            "Google GenAI package is not installed"
-        )
+    if not question:
+        return "Please enter your question."
 
-    if not GEMINI_API_KEY:
+    # -----------------------------------------------------
+    # HANDLE GREETINGS
+    # -----------------------------------------------------
 
-        raise RuntimeError(
-            "Gemini API key is not configured"
+    greetings = {
+        "hi",
+        "hello",
+        "hey",
+        "good morning",
+        "good afternoon",
+        "good evening"
+    }
+
+    if question.lower().strip("!?. ") in greetings:
+        return (
+            "Hello! Welcome to BlensCart. "
+            "I'm here to help you with your questions "
+            "about our products and services. "
+            "How can I assist you today?"
         )
 
     # -----------------------------------------------------
-    # BUILD DOCUMENT CONTEXT
+    # BUILD CONTEXT FROM CHROMADB RESULTS
     # -----------------------------------------------------
 
     context_parts = []
 
-    for index, chunk in enumerate(
-        retrieved_chunks,
-        start=1
-    ):
+    for chunk in retrieved_chunks or []:
 
-        text_value = chunk.get(
-            "text",
-            ""
-        )
+        text_value = chunk.get("text", "")
 
-        metadata = chunk.get(
-            "metadata",
-            {}
-        )
-
-        if not text_value:
-
+        if not isinstance(text_value, str):
             continue
 
-        document_name = metadata.get(
-            "document_name",
-            "Uploaded document"
-        )
+        text_value = text_value.strip()
 
-        page_number = metadata.get(
-            "page_number",
-            "Unknown"
-        )
+        if text_value:
+            context_parts.append(text_value)
 
-        context_parts.append(
-            f"""
-Document: {document_name}
-Page: {page_number}
-Retrieved section {index}:
-
-{text_value}
-"""
-        )
-
-    context = "\n\n".join(
-        context_parts
-    )
-
-    # -----------------------------------------------------
-    # SAFETY CHECK
-    # -----------------------------------------------------
-
-    if not context:
-
+    if not context_parts:
         return (
-            "The available documents do not "
-            "contain enough information to answer "
-            "this question."
+            "The available documents do not contain enough "
+            "information to answer this question."
         )
 
-    # -----------------------------------------------------
-    # CREATE GEMINI CLIENT
-    # -----------------------------------------------------
-
-    client = genai.Client(
-        api_key=GEMINI_API_KEY
-    )
+    context = "\n\n".join(context_parts)
 
     # -----------------------------------------------------
-    # PROMPT
+    # PREPARE PROMPT
     # -----------------------------------------------------
 
     prompt = f"""
-You are answering a user's question using
-information from uploaded documents.
+You are the customer-support assistant for BlensCart.
 
-User question:
-{original_question}
+Answer the user's question using the supplied document
+information.
 
-Document information:
+USER QUESTION:
+{question}
+
+DOCUMENT INFORMATION:
 {context}
 
-Instructions:
-
-- Answer the user's question using the supplied
-  document information.
-- Prefer information directly supported by the
-  supplied documents.
-- Do not invent facts that are not supported.
-- If the supplied documents do not contain enough
-  information, clearly say that the available
-  documents do not contain enough information.
-- Give the final answer directly to the user.
-- Do not mention agents.
-- Do not mention ChromaDB.
-- Do not mention embeddings.
-- Do not mention retrieval.
-- Do not mention vector databases.
-- Do not mention internal prompts.
-- Do not expose internal metadata.
-- Do not describe the internal processing.
+INSTRUCTIONS:
+1. Answer the user's actual question directly.
+2. Use the supplied document information as your source.
+3. Do not invent product details, policies, or features.
+4. If the information is insufficient, clearly say so.
+5. Do not treat unsupported assumptions as facts.
+6. Give a clear, concise, natural answer.
+7. Do not mention internal processing or databases.
+8. If the question is unrelated to the documents,
+   explain that the available documents do not contain
+   enough information to answer it.
 """
 
     # -----------------------------------------------------
-    # CALL GEMINI
+    # GENERATE ANSWER USING LOCAL LLM
     # -----------------------------------------------------
 
-    response = client.models.generate_content(
-        model=LLM_MODEL,
-        contents=prompt,
-        config=types.GenerateContentConfig(
-            max_output_tokens=1200,
-            temperature=0.2
-        )
+    response = ollama.chat(
+        model="qwen2.5:3b",
+        messages=[
+            {
+                "role": "user",
+                "content": prompt
+            }
+        ],
+        options={
+            "temperature": 0.1
+        }
     )
 
-    # -----------------------------------------------------
-    # READ RESPONSE
-    # -----------------------------------------------------
-
-    answer = (
-        response.text
-        if response and response.text
-        else ""
-    )
-
-    answer = answer.strip()
+    answer = response["message"]["content"].strip()
 
     if not answer:
-
         raise RuntimeError(
-            "LLM returned an empty response"
+            "The local LLM returned an empty response."
         )
 
     return answer
-
 
 # =========================================================
 # AGENT 4 - COACHING AGENT
