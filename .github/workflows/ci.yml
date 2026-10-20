@@ -2,10 +2,9 @@ name: Customer Support AI Agent CI/CD
 
 on:
   push:
-    branches: 
-      - main 
+    branches:
+      - main
   pull_request:
-    
 
 jobs:
   test:
