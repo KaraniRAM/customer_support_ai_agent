@@ -6,42 +6,48 @@ on:
       - main
   pull_request:
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   test:
-    runs-on: ubuntu-24.04   # pin version for stability
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.10"
+          cache: pip
 
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install pytest   # ensure pytest is available
+          pip install pytest
 
       - name: Run tests
-        run: pytest -v   # let pytest discover all tests
+        run: python -m pytest -v
+        env:
+          PYTHONPATH: ${{ github.workspace }}:${{ github.workspace }}/backend
 
   build:
     needs: test
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Create build package
         run: |
-          mkdir build
+          mkdir -p build
           cp backend/*.py build/
           cp requirements.txt build/
 
       - name: Upload build artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: customer-support-build
           path: build/
@@ -51,7 +57,7 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - name: Download build artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: customer-support-build
           path: deployment/
@@ -64,8 +70,7 @@ jobs:
       - name: Deploy application
         run: |
           echo "Deploying Customer Support AI Agent..."
-          # Replace this with your actual deployment command
-          # Example:
+          # Replace with your actual deployment command, e.g.:
           # docker build -t myrepo/customer-support-agent .
           # docker push myrepo/customer-support-agent
           echo "Deployment successful!"
