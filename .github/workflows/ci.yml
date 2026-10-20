@@ -25,6 +25,24 @@ jobs:
           pip install -r requirements.txt
           pip install pytest ollama
 
+      - name: Install Ollama
+        run: curl -fsSL https://ollama.com/install.sh | sh
+
+      - name: Cache Ollama models
+        uses: actions/cache@v4
+        with:
+          path: ~/.ollama
+          key: ollama-models-llama3.2-1b
+
+      - name: Start Ollama and pull model
+        run: |
+          nohup ollama serve > ollama.log 2>&1 &
+          for i in $(seq 1 30); do
+            curl -s http://127.0.0.1:11434 && break
+            sleep 2
+          done
+          ollama pull llama3.2:1b    # <-- use the model your code uses
+
       - name: Run tests
         env:
           PYTHONPATH: ${{ github.workspace }}:${{ github.workspace }}/backend

@@ -6,4 +6,4 @@ openai
 fastapi
 pydantic
 requests
-ollama
+ollama==0.6.3
