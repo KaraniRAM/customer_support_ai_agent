@@ -26,10 +26,9 @@ jobs:
       - name: Run tests
         run: pytest backend/test_agent_workflow.py -v
 
-
   build:
     needs: test
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -48,7 +47,7 @@ jobs:
 
   deploy:
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Download build artifact
         uses: actions/download-artifact@v4
@@ -65,6 +64,7 @@ jobs:
         run: |
           echo "Deploying Customer Support AI Agent..."
           # Replace this with your actual deployment command
-          # Example: docker build -t myrepo/customer-support-agent .
+          # Example:
+          # docker build -t myrepo/customer-support-agent .
           # docker push myrepo/customer-support-agent
           echo "Deployment successful!"
