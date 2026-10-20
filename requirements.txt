@@ -7,3 +7,5 @@ fastapi
 pydantic
 requests
 ollama==0.6.3
+
+python-dotenv
