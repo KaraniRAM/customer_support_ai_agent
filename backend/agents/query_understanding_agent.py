@@ -1,6 +1,19 @@
 import re
+import subprocess
+import json
 
 class QueryUnderstandingAgent:
+    def __init__(self, ollama_model="llama3"):
+        self.ollama_model = ollama_model
+
+    def _ask_ollama(self, question):
+        # Call Ollama CLI to get structured intent
+        result = subprocess.run(
+            ["ollama", "run", self.ollama_model, question],
+            capture_output=True,
+            text=True
+        )
+        return result.stdout.strip()
 
     def understand(self, original_question):
         cleaned_question = re.sub(r"\s+", " ", original_question).strip()
@@ -27,10 +40,12 @@ class QueryUnderstandingAgent:
         elif any(word in lowered for word in ["why", "reason"]):
             intent = "explanation_request"
         else:
-            intent = "general_request"
+            # Use Ollama for deeper understanding
+            ollama_response = self._ask_ollama(cleaned_question)
+            intent = f"ollama_inferred: {ollama_response}"
 
         return {
             "original_question": original_question,
-            "cleaned_question": cleaned_question,  # ✅ consistent key
+            "cleaned_question": cleaned_question,
             "intent": intent
         }
