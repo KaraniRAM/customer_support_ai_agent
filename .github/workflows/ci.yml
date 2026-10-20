@@ -29,7 +29,10 @@ jobs:
           pip install pytest
 
       - name: Run tests
-        run: python -m pytest -v
+        run: |
+          python --version
+          pip list
+          python -m pytest -v --tb=long -x
         env:
           PYTHONPATH: ${{ github.workspace }}:${{ github.workspace }}/backend
 
