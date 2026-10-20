@@ -8,7 +8,7 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-24.04   # pin version for stability
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -25,7 +25,7 @@ jobs:
           pip install pytest   # ensure pytest is available
 
       - name: Run tests
-        run: pytest -v   # let pytest discover all tests
+        run: pytest -v
 
 
   build:
