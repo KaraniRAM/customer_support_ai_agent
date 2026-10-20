@@ -30,11 +30,17 @@ jobs:
 
       - name: Run tests
         run: |
-          python --version
-          pip list
-          python -m pytest -v --tb=long -x
+          python -m pytest -v --tb=short -rfE 2>&1 | tee pytest-output.txt
+          exit ${PIPESTATUS[0]}
         env:
           PYTHONPATH: ${{ github.workspace }}:${{ github.workspace }}/backend
+
+      - name: Upload pytest log
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: pytest-log
+          path: pytest-output.txt
 
   build:
     needs: test
