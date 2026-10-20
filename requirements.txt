@@ -1,6 +1,1 @@
-# Core dependencies
-chromadb==0.5.0          # For persistent vector database
-sentence-transformers==2.2.2  # For embeddings
-pytest==7.4.0            # For testing framework
-ollama                   # For LLM inference (if you use Ollama CLI)
-
+pytest==7.4.0
