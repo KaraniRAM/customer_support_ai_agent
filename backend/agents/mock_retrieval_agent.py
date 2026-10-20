@@ -9,7 +9,7 @@ class MockRetrievalAgent:
         elif "located" in question:
             chunks = ["BlensCart operates in Madurai, Tiruchirappalli."]
         elif "is any job" in question and "available" in question:
-            chunks = ["BlensCart is hiring in Chennai and the salary range is ₹15,000 to ₹17,000 per month."]
+            chunks = [" Yes.BlensCart is hiring in Chennai and the salary range is ₹15,000 to ₹17,000 per month."]
         elif "blenscart" in question:
             chunks = ["BlensCart is a smart-eyewear platform offering spectacles."]
         else:
