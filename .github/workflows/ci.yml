@@ -64,7 +64,6 @@ jobs:
         run: |
           echo "Deploying Customer Support AI Agent..."
           # Replace this with your actual deployment command
-          # For example:
-          # docker build -t myrepo/customer-support-agent .
+          # Example: docker build -t myrepo/customer-support-agent .
           # docker push myrepo/customer-support-agent
           echo "Deployment successful!"
