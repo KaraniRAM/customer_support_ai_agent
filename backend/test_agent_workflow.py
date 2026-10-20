@@ -32,3 +32,6 @@ def test_job_availability(orchestrator):
 def test_owner_question(orchestrator):
     result = run_pipeline(orchestrator, "Who is the owner of BlensCart?")
     assert "does not " in result or "I don't have enough" in result or "do not have" in result
+
+
+    
