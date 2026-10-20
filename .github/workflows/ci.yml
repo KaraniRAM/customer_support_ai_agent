@@ -1,4 +1,4 @@
-name: CI/CD Pipeline
+name: Customer Support AI Agent CI/CD
 
 on:
   push:
@@ -7,14 +7,14 @@ on:
     branches: [ main ]
 
 jobs:
-  build:
+  test:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: "3.10"
 
@@ -26,7 +26,14 @@ jobs:
       - name: Run tests
         run: pytest backend/test_agent_workflow.py -v
 
-      - name: Package build
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Create build package
         run: |
           mkdir build
           cp backend/*.py build/
@@ -55,5 +62,9 @@ jobs:
 
       - name: Deploy application
         run: |
-          echo "Deploying customer support AI agent..."
+          echo "Deploying Customer Support AI Agent..."
+          # Replace this with your actual deployment command
+          # For example:
+          # docker build -t myrepo/customer-support-agent .
+          # docker push myrepo/customer-support-agent
           echo "Deployment successful!"
