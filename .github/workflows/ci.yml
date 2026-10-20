@@ -7,8 +7,9 @@ on:
     branches: [ main ]
 
 jobs:
+  
   test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04   # pin version for stability
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -25,6 +26,7 @@ jobs:
 
       - name: Run tests
         run: pytest backend/test_agent_workflow.py -v
+
 
   build:
     needs: test
