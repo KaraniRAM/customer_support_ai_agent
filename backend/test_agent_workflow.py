@@ -25,11 +25,10 @@ def test_location(orchestrator):
     result = run_pipeline(orchestrator, "Where is BlensCart located?")
     assert "Madurai" in result and "Tiruchirappalli" in result
 
-'''def test_job_availability(orchestrator):
+def test_job_availability(orchestrator):
     result = run_pipeline(orchestrator, "Is any job available at BlensCart?")
     assert "hiring" in result or "Yes" in result
 
 def test_owner_question(orchestrator):
     result = run_pipeline(orchestrator, "Who is the owner of BlensCart?")
     assert "does not " in result or "I don't have enough" in result or "do not have" in result
-'''
