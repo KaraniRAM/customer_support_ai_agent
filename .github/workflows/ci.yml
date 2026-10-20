@@ -23,12 +23,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install pytest
-
-      - name: Show repo layout
-        run: |
-          echo "Python: $(python --version)"
-          find . -name "test_*.py" -o -name "*_test.py" -o -name "conftest.py" | grep -v node_modules | sort
+          pip install pytest ollama
 
       - name: Run tests
         env:
