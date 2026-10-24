@@ -7,7 +7,7 @@ class QueryUnderstandingAgent:
         self.ollama_model = ollama_model
 
     def _ask_ollama(self, question):
-        # Call Ollama CLI to get structured intent
+      
         result = subprocess.run(
             ["ollama", "run", self.ollama_model, question],
             capture_output=True,

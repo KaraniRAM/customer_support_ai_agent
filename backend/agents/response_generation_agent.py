@@ -239,3 +239,5 @@ Answer:
                 "I'm sorry, the local AI service is currently unavailable. "
                 "Please ensure Ollama is running and try again."
             )
+
+
