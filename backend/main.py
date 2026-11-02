@@ -8,7 +8,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from pathlib import Path
 from pydantic import BaseModel
 import ollama
-import psycopg2
 import json
 import base64
 import os
@@ -17,7 +16,7 @@ import secrets
 import hashlib
 import math
 import io
-
+from supabase import create_client, Client
 from datetime import datetime, date
 from dotenv import load_dotenv
 
@@ -82,19 +81,6 @@ app.add_middleware(
 )
 
 
-# ---------------------------------------------------------
-# DATABASE CONNECTION
-# ---------------------------------------------------------
-
-def get_db_connection():
-
-    return psycopg2.connect(
-        host="localhost",
-        port="5432",
-        database="bc",
-        user="postgres",
-        password="Karani@2006"
-    )
 
 
 # ---------------------------------------------------------

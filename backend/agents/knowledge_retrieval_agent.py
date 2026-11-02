@@ -1,8 +1,7 @@
-import os
-from pathlib import Path
 
-import chromadb
+import os
 from dotenv import load_dotenv
+import psycopg2
 from sentence_transformers import SentenceTransformer
 
 
@@ -12,19 +11,7 @@ from sentence_transformers import SentenceTransformer
 
 load_dotenv()
 
-BASE_DIR = Path(__file__).resolve().parent.parent
-
-CHROMA_DIR = Path(
-    os.getenv(
-        "CHROMA_DIR",
-        str(BASE_DIR.parent / "chroma_db")
-    )
-)
-
-COLLECTION_NAME = os.getenv(
-    "CHROMA_COLLECTION_NAME",
-    "blencekart_documents"
-)
+DATABASE_URL = os.getenv("DATABASE_URL")
 
 EMBEDDING_MODEL = os.getenv(
     "EMBEDDING_MODEL",
@@ -42,22 +29,10 @@ class KnowledgeRetrievalAgent:
 
         self.n_results = n_results
 
-        # Connect to the existing persistent ChromaDB
-        self.client = chromadb.PersistentClient(
-            path=str(CHROMA_DIR)
-        )
-
-        # Access the existing collection
-        try:
-            self.collection = self.client.get_collection(
-                name=COLLECTION_NAME
+        if not DATABASE_URL:
+            raise ValueError(
+                "DATABASE_URL is missing in .env file"
             )
-        except Exception as exc:
-            raise RuntimeError(
-                f"Could not open ChromaDB collection "
-                f"'{COLLECTION_NAME}'. Check the collection name "
-                f"and database path."
-            ) from exc
 
         # Load the same embedding model used during PDF indexing
         self.embedding_model = SentenceTransformer(
@@ -65,10 +40,20 @@ class KnowledgeRetrievalAgent:
         )
 
     # =====================================================
+    # CONNECT TO SUPABASE POSTGRESQL
+    # =====================================================
+
+    def get_db_connection(self):
+
+        return psycopg2.connect(DATABASE_URL)
+
+    # =====================================================
     # RETRIEVE RELEVANT KNOWLEDGE
     # =====================================================
 
     def retrieve(self, query_data):
+
+        connection = None
 
         try:
 
@@ -81,77 +66,79 @@ class KnowledgeRetrievalAgent:
             if not question:
                 return {
                     "chunks": [],
-                    "has_relevant_context": False
+                    "has_relevant_context": False,
+                    "metadata": []
                 }
 
-            # Convert the question into an embedding
+            # Convert question into a 384-dimensional embedding
             query_embedding = self.embedding_model.encode(
                 question,
                 normalize_embeddings=True
             ).tolist()
 
-            # Search ChromaDB
-            results = self.collection.query(
-                query_embeddings=[query_embedding],
-                n_results=min(
-                    self.n_results,
-                    self.collection.count()
-                ),
-                include=["documents", "metadatas", "distances"]
+            # Convert embedding into PostgreSQL vector format
+            embedding_string = "[" + ",".join(
+                map(str, query_embedding)
+            ) + "]"
+
+            # Connect to Supabase PostgreSQL
+            connection = self.get_db_connection()
+
+            cursor = connection.cursor()
+
+            # Search for the most relevant document chunks
+            cursor.execute(
+                """
+                SELECT
+                    chunk_text,
+                    document_id,
+                    page_number,
+                    embedding OPERATOR(extensions.<=>)
+                    %s::extensions.vector AS distance
+
+                FROM public.rag_chunks
+
+                WHERE embedding IS NOT NULL
+
+                ORDER BY embedding OPERATOR(extensions.<=>)
+                    %s::extensions.vector
+
+                LIMIT %s
+                """,
+                (
+                    embedding_string,
+                    embedding_string,
+                    self.n_results
+                )
             )
 
-            # Extract retrieved document chunks
-            documents = results.get("documents", [[]])
+            results = cursor.fetchall()
 
-            if not documents or not documents[0]:
-                return {
-                    "chunks": [],
-                    "has_relevant_context": False
-                }
+            cursor.close()
 
+            # Extract retrieved chunks
             chunks = []
             retrieved_metadata = []
-            distances = results.get("distances", [[]])
 
-            for index, document in enumerate(documents[0]):
+            for row in results:
 
-                if not document or not document.strip():
+                chunk_text = row[0]
+
+                if not chunk_text or not chunk_text.strip():
                     continue
 
-                chunks.append(document.strip())
-
-                metadata_list = results.get(
-                    "metadatas",
-                    [[]]
-                )
-
-                metadata = (
-                    metadata_list[0][index]
-                    if metadata_list
-                    and metadata_list[0]
-                    and index < len(metadata_list[0])
-                    else {}
-                )
-
-                distance = (
-                    distances[0][index]
-                    if distances
-                    and distances[0]
-                    and index < len(distances[0])
-                    else None
-                )
+                chunks.append(chunk_text.strip())
 
                 retrieved_metadata.append({
-                    "document_name": metadata.get(
-                        "document_name"
-                    ),
-                    "document_id": metadata.get(
-                        "document_id"
-                    ),
-                    "page_number": metadata.get(
-                        "page_number"
-                    ),
-                    "distance": distance
+
+                    "document_id": row[1],
+
+                    "page_number": row[2],
+
+                    "distance": float(row[3])
+                    if row[3] is not None
+                    else None
+
                 })
 
             print(
@@ -160,9 +147,13 @@ class KnowledgeRetrievalAgent:
             )
 
             return {
+
                 "chunks": chunks,
+
                 "has_relevant_context": bool(chunks),
+
                 "metadata": retrieved_metadata
+
             }
 
         except Exception as exc:
@@ -172,8 +163,13 @@ class KnowledgeRetrievalAgent:
                 str(exc)
             )
 
-            # Do not expose internal errors to the user
             return {
                 "chunks": [],
-                "has_relevant_context": False
+                "has_relevant_context": False,
+                "metadata": []
             }
+
+        finally:
+
+            if connection:
+                connection.close()
