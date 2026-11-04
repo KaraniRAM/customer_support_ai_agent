@@ -1,11 +1,10 @@
-pytest==7.4.0
-chromadb
-sentence-transformers
-langchain
-openai
 fastapi
+uvicorn[standard]
+python-multipart
 pydantic
+psycopg2-binary
+pypdf
 requests
-ollama==0.6.3
-
 python-dotenv
+google-genai
+pytest==7.4.0
