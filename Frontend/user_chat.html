@@ -67,6 +67,34 @@
             word-break: break-word;
         }
 
+        /* Formatted (Markdown) AI answers */
+        .message-text.message-ai { white-space: normal; }
+        .message-ai p { margin: 0 0 8px; }
+        .message-ai p:last-child,
+        .message-ai ul:last-child,
+        .message-ai ol:last-child { margin-bottom: 0; }
+        .message-ai ul,
+        .message-ai ol { margin: 4px 0 8px; padding-left: 20px; }
+        .message-ai ul { list-style: disc; }
+        .message-ai ol { list-style: decimal; }
+        .message-ai li { margin: 2px 0; }
+        .message-ai li::marker { color: #7dd3fc; }
+        .message-ai strong { color: #e0f2fe; font-weight: 600; }
+        .message-ai em { font-style: italic; }
+        .message-ai .md-heading {
+            margin: 10px 0 6px;
+            font-weight: 700;
+            font-size: 15px;
+            color: #7dd3fc;
+        }
+        .message-ai .md-heading:first-child { margin-top: 0; }
+        .message-ai code {
+            padding: 1px 5px;
+            border-radius: 4px;
+            background: rgba(125,211,252,.12);
+            font-size: 13px;
+        }
+
         .message-row {
             display: flex;
             align-items: flex-start;
@@ -478,6 +506,83 @@
         welcomeMessage.classList.remove("hidden");
     }
 
+    // Minimal, safe Markdown renderer for AI answers:
+    // headings, bold, italic, inline code, bullet / numbered lists, paragraphs.
+    function escapeHtml(value) {
+        return value
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#39;");
+    }
+
+    function renderInline(value) {
+        return escapeHtml(value)
+            .replace(/`([^`]+)`/g, "<code>$1</code>")
+            .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+            .replace(/__(.+?)__/g, "<strong>$1</strong>")
+            .replace(/(^|[^*])\*(?!\s)([^*]+?)\*(?!\*)/g, "$1<em>$2</em>");
+    }
+
+    function renderMarkdown(markdown) {
+        const lines = markdown.replace(/\r\n/g, "\n").split("\n");
+        const html = [];
+        let listType = null;
+        let paragraph = [];
+
+        const flushParagraph = () => {
+            if (paragraph.length) {
+                html.push(`<p>${paragraph.map(renderInline).join("<br>")}</p>`);
+                paragraph = [];
+            }
+        };
+
+        const closeList = () => {
+            if (listType) {
+                html.push(`</${listType}>`);
+                listType = null;
+            }
+        };
+
+        for (const rawLine of lines) {
+            const line = rawLine.trim();
+
+            if (!line || /^(-{3,}|\*{3,}|_{3,})$/.test(line)) {
+                flushParagraph();
+                closeList();
+                continue;
+            }
+
+            const heading = line.match(/^#{1,6}\s+(.*)$/);
+            const bullet = line.match(/^[-*+•]\s+(.*)$/);
+            const numbered = line.match(/^\d+[.)]\s+(.*)$/);
+
+            if (heading) {
+                flushParagraph();
+                closeList();
+                html.push(`<div class="md-heading">${renderInline(heading[1].replace(/#+\s*$/, ""))}</div>`);
+            } else if (bullet || numbered) {
+                flushParagraph();
+                const wanted = bullet ? "ul" : "ol";
+                if (listType !== wanted) {
+                    closeList();
+                    html.push(`<${wanted}>`);
+                    listType = wanted;
+                }
+                html.push(`<li>${renderInline((bullet || numbered)[1])}</li>`);
+            } else {
+                closeList();
+                paragraph.push(line);
+            }
+        }
+
+        flushParagraph();
+        closeList();
+
+        return html.join("");
+    }
+
     function addMessage(type, text) {
         if (text === null || text === undefined || text === "") {
             return;
@@ -509,8 +614,13 @@
         const bubble = document.createElement("div");
         bubble.className = `message-text ${type === "ai" ? "message-ai" : "message-user"}`;
 
-        // textContent prevents user-provided text from being interpreted as HTML.
-        bubble.textContent = String(text);
+        if (type === "ai") {
+            // AI answers use Markdown; render it (HTML is escaped first).
+            bubble.innerHTML = renderMarkdown(String(text));
+        } else {
+            // textContent prevents user-provided text from being interpreted as HTML.
+            bubble.textContent = String(text);
+        }
 
         content.appendChild(label);
         content.appendChild(bubble);
