@@ -321,6 +321,22 @@
 
         }
 
+        /* Formatted (Markdown) AI answers in chat history */
+        .md-answer p { margin: 0 0 8px; line-height: 1.65; }
+        .md-answer p:last-child,
+        .md-answer ul:last-child,
+        .md-answer ol:last-child { margin-bottom: 0; }
+        .md-answer ul,
+        .md-answer ol { margin: 4px 0 8px; padding-left: 20px; }
+        .md-answer ul { list-style: disc; }
+        .md-answer ol { list-style: decimal; }
+        .md-answer li { margin: 2px 0; }
+        .md-answer strong { color: #e0f2fe; font-weight: 600; }
+        .md-answer em { font-style: italic; }
+        .md-answer .md-heading { margin: 10px 0 6px; font-weight: 700; color: #67e8f9; }
+        .md-answer .md-heading:first-child { margin-top: 0; }
+        .md-answer code { padding: 1px 5px; border-radius: 4px; background: rgba(103,232,249,.12); }
+
     </style>
 
 </head>
@@ -1202,6 +1218,75 @@
 
             return div.innerHTML;
 
+        }
+
+
+        // Minimal, safe Markdown renderer for AI answers (HTML is escaped first).
+        function renderInlineMarkdown(value) {
+            return escapeHtml(value)
+                .replace(/`([^`]+)`/g, "<code>$1</code>")
+                .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+                .replace(/__(.+?)__/g, "<strong>$1</strong>")
+                .replace(/(^|[^*])\*(?!\s)([^*]+?)\*(?!\*)/g, "$1<em>$2</em>");
+        }
+
+
+        function renderMarkdown(markdown) {
+            const lines = String(markdown ?? "").replace(/\r\n/g, "\n").split("\n");
+            const html = [];
+            let listType = null;
+            let paragraph = [];
+
+            const flushParagraph = () => {
+                if (paragraph.length) {
+                    html.push(`<p>${paragraph.map(renderInlineMarkdown).join("<br>")}</p>`);
+                    paragraph = [];
+                }
+            };
+
+            const closeList = () => {
+                if (listType) {
+                    html.push(`</${listType}>`);
+                    listType = null;
+                }
+            };
+
+            for (const rawLine of lines) {
+                const line = rawLine.trim();
+
+                if (!line || /^(-{3,}|\*{3,}|_{3,})$/.test(line)) {
+                    flushParagraph();
+                    closeList();
+                    continue;
+                }
+
+                const heading = line.match(/^#{1,6}\s+(.*)$/);
+                const bullet = line.match(/^[-*+•]\s+(.*)$/);
+                const numbered = line.match(/^\d+[.)]\s+(.*)$/);
+
+                if (heading) {
+                    flushParagraph();
+                    closeList();
+                    html.push(`<div class="md-heading">${renderInlineMarkdown(heading[1].replace(/#+\s*$/, ""))}</div>`);
+                } else if (bullet || numbered) {
+                    flushParagraph();
+                    const wanted = bullet ? "ul" : "ol";
+                    if (listType !== wanted) {
+                        closeList();
+                        html.push(`<${wanted}>`);
+                        listType = wanted;
+                    }
+                    html.push(`<li>${renderInlineMarkdown((bullet || numbered)[1])}</li>`);
+                } else {
+                    closeList();
+                    paragraph.push(line);
+                }
+            }
+
+            flushParagraph();
+            closeList();
+
+            return html.join("");
         }
 
 
@@ -2208,13 +2293,9 @@
                         </div>
 
 
-                        <p class="text-gray-300 whitespace-pre-wrap">
-
-                            ${escapeHtml(
-                                message.ai_response
-                            )}
-
-                        </p>
+                        <div class="text-gray-300 md-answer">${renderMarkdown(
+                            message.ai_response
+                        )}</div>
 
                     `;
 
