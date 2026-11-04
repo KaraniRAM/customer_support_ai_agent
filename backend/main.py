@@ -7,8 +7,14 @@ from fastapi.responses import FileResponse, Response, HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pathlib import Path
 from pydantic import BaseModel
-import ollama
 import psycopg2
+from psycopg2 import pool as pg_pool
+import requests
+import time
+import threading
+from concurrent.futures import ThreadPoolExecutor
+from functools import lru_cache
+from urllib3.util.retry import Retry
 import json
 import base64
 import os
@@ -21,6 +27,7 @@ import io
 from datetime import datetime, date
 from dotenv import load_dotenv
 
+load_dotenv(Path(__file__).resolve().parent / ".env")
 load_dotenv()
 
 
@@ -29,19 +36,9 @@ load_dotenv()
 # ---------------------------------------------------------
 
 try:
-    import chromadb
-except Exception:
-    chromadb = None
-
-try:
     from pypdf import PdfReader
 except Exception:
     PdfReader = None
-
-try:
-    from sentence_transformers import SentenceTransformer
-except Exception:
-    SentenceTransformer = None
 
 try:
     from google import genai
@@ -66,8 +63,6 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 FRONTEND_DIR = BASE_DIR / "Frontend"
 
-CHROMA_DIR = BASE_DIR / "chroma_db"
-
 
 # ---------------------------------------------------------
 # CORS
@@ -86,15 +81,100 @@ app.add_middleware(
 # DATABASE CONNECTION
 # ---------------------------------------------------------
 
+# Connections are pooled so each request skips the TCP/TLS/auth handshake.
+# Callers still call connection.close(), which returns it to the pool.
+
+_db_pool = None
+_db_pool_lock = threading.Lock()
+_db_last_used = {}
+
+
+class _PooledConnection:
+
+    def __init__(self, connection):
+        self._connection = connection
+
+    def __getattr__(self, name):
+        return getattr(self._connection, name)
+
+    def close(self):
+
+        connection, self._connection = self._connection, None
+
+        if connection is None:
+            return
+
+        broken = bool(connection.closed)
+
+        try:
+            if not broken:
+                connection.rollback()
+        except Exception:
+            broken = True
+
+        _db_last_used[id(connection)] = time.monotonic()
+
+        try:
+            _db_pool.putconn(connection, close=broken)
+        except Exception:
+            pass
+
+
+def _db_connect_kwargs():
+
+    params = {
+        "keepalives": 1,
+        "keepalives_idle": 30,
+        "keepalives_interval": 10,
+        "keepalives_count": 3,
+        "connect_timeout": 10
+    }
+
+    database_url = os.getenv("DATABASE_URL", "").strip()
+
+    if database_url:
+        return {"dsn": database_url, **params}
+
+    return {
+        "host": os.getenv("DB_HOST", "localhost"),
+        "port": os.getenv("DB_PORT", "5432"),
+        "database": os.getenv("DB_NAME", "bc"),
+        "user": os.getenv("DB_USER", "postgres"),
+        "password": os.getenv("DB_PASSWORD", ""),
+        **params
+    }
+
+
 def get_db_connection():
 
-    return psycopg2.connect(
-        host="localhost",
-        port="5432",
-        database="bc",
-        user="postgres",
-        password="Karani@2006"
-    )
+    global _db_pool
+
+    if _db_pool is None:
+        with _db_pool_lock:
+            if _db_pool is None:
+                _db_pool = pg_pool.ThreadedConnectionPool(
+                    1,
+                    int(os.getenv("DB_POOL_SIZE", "8")),
+                    **_db_connect_kwargs()
+                )
+
+    connection = _db_pool.getconn()
+
+    # Only health-check connections that sat idle long enough to be dropped
+    # by the server (saves a network round trip on every request).
+    idle = time.monotonic() - _db_last_used.get(id(connection), 0)
+
+    try:
+        if connection.closed:
+            raise psycopg2.InterfaceError("closed")
+        if idle > 120:
+            connection.cursor().execute("SELECT 1")
+            connection.rollback()
+    except Exception:
+        _db_pool.putconn(connection, close=True)
+        connection = _db_pool.getconn()
+
+    return _PooledConnection(connection)
 
 
 # ---------------------------------------------------------
@@ -289,14 +369,46 @@ GEMINI_API_KEY = os.getenv(
     ""
 )
 
-CHROMA_COLLECTION_NAME = os.getenv(
-    "CHROMA_COLLECTION_NAME",
-    "blencekart_documents"
+SUPABASE_URL = re.sub(
+    r"/(rest|storage)/v1/?$",
+    "",
+    os.getenv("SUPABASE_URL", "").strip().rstrip("/")
 )
 
-EMBEDDING_MODEL_NAME = os.getenv(
-    "EMBEDDING_MODEL",
-    "all-MiniLM-L6-v2"
+SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_KEY", "").strip()
+
+SUPABASE_BUCKET = os.getenv("SUPABASE_BUCKET", "rag-documents").strip()
+
+MISTRAL_API_KEYS = [
+    key.strip()
+    for key in (
+        os.getenv("MISTRAL_API_KEY", ""),
+        os.getenv("MISTRAL_API_KEY_BACKUP", "")
+    )
+    if key and key.strip()
+]
+
+MISTRAL_EMBED_MODEL = os.getenv("MISTRAL_EMBED_MODEL", "mistral-embed")
+
+MISTRAL_RERANK_MODEL = os.getenv("MISTRAL_RERANK_MODEL", "ministral-8b-latest")
+
+MISTRAL_CHAT_MODEL = os.getenv("MISTRAL_CHAT_MODEL", "ministral-8b-latest")
+
+MISTRAL_CHAT_MODEL_FALLBACK = os.getenv(
+    "MISTRAL_CHAT_MODEL_FALLBACK",
+    "mistral-small-latest"
+)
+
+RAG_CANDIDATES = int(os.getenv("RAG_CANDIDATES", "12"))
+
+RAG_TOP_K = int(os.getenv("RAG_TOP_K", "5"))
+
+# Reply for questions that are not about BlensCart
+OUT_OF_SCOPE_MARKER = "OUT_OF_SCOPE"
+
+OUT_OF_SCOPE_MESSAGE = (
+    "This question is out of context. Please ask me questions related "
+    "to BlensCart, and I'm happy to give you information about that."
 )
 
 
@@ -311,9 +423,27 @@ USER_SESSIONS = {}
 # RAG GLOBAL OBJECTS
 # ---------------------------------------------------------
 
-_chroma_client = None
-_chroma_collection = None
-_embedding_model = None
+# One keep-alive HTTP session for Mistral + Supabase (reuses TLS connections)
+_http = requests.Session()
+_http.mount(
+    "https://",
+    requests.adapters.HTTPAdapter(
+        pool_connections=4,
+        pool_maxsize=16,
+        # Transparently retry when a kept-alive connection was closed by the server
+        max_retries=Retry(
+            total=2,
+            connect=2,
+            read=1,
+            status=0,
+            allowed_methods=None,
+            backoff_factor=0
+        )
+    )
+)
+
+# Runs the RAG pipeline alongside the chat endpoint's database work
+_rag_executor = ThreadPoolExecutor(max_workers=8)
 
 
 # =========================================================
@@ -476,142 +606,260 @@ def get_authenticated_user(
 
 
 # =========================================================
-# CHROMADB HELPERS
+# SUPABASE + MISTRAL RAG HELPERS
+# PDFs     -> Supabase Storage bucket
+# Vectors  -> Supabase pgvector table (rag_chunks)
+# Embed / rerank / answer -> Mistral API (primary key, backup key on failure)
 # =========================================================
 
-def get_chroma_collection():
+def _mistral_post(path, payload, timeout=30):
 
-    global _chroma_client
-    global _chroma_collection
+    """POST to the Mistral API, falling back to the backup key on failure."""
 
-    if chromadb is None:
+    if not MISTRAL_API_KEYS:
+        raise RuntimeError("MISTRAL_API_KEY is not configured")
 
-        raise RuntimeError(
-            "ChromaDB is not installed"
-        )
+    last_error = None
 
-    CHROMA_DIR.mkdir(
-        parents=True,
-        exist_ok=True
-    )
+    for key_index, api_key in enumerate(MISTRAL_API_KEYS):
 
-    if _chroma_client is None:
+        try:
 
-        print(
-            "CHROMADB DIRECTORY:",
-            str(CHROMA_DIR)
-        )
-
-        _chroma_client = chromadb.PersistentClient(
-            path=str(CHROMA_DIR)
-        )
-
-    if _chroma_collection is None:
-
-        _chroma_collection = (
-            _chroma_client.get_or_create_collection(
-                name=CHROMA_COLLECTION_NAME
+            response = _http.post(
+                f"https://api.mistral.ai/v1/{path}",
+                json=payload,
+                headers={"Authorization": f"Bearer {api_key}"},
+                timeout=timeout
             )
+
+        except requests.RequestException as error:
+
+            last_error = error
+            print(f"MISTRAL {path} NETWORK ERROR (key {key_index + 1}):", error)
+            continue
+
+        if response.status_code == 200:
+            return response.json()
+
+        last_error = RuntimeError(
+            f"Mistral {path} HTTP {response.status_code}: "
+            f"{response.text[:300]}"
         )
 
-        print(
-            "CHROMADB COLLECTION:",
-            CHROMA_COLLECTION_NAME
-        )
+        print(f"MISTRAL {path} FAILED (key {key_index + 1}):", last_error)
 
-        print(
-            "CHROMADB EXISTING CHUNKS:",
-            _chroma_collection.count()
-        )
+        # Only auth, rate-limit and server errors are worth retrying with the backup key
+        if response.status_code not in (401, 403, 429) and response.status_code < 500:
+            break
 
-    return _chroma_collection
+    raise RuntimeError(f"Mistral request failed: {last_error}")
 
 
-def get_embedding_model():
+def mistral_chat(
+    messages,
+    model,
+    max_tokens=500,
+    temperature=0.1,
+    json_mode=False,
+    use_fallback_model=True,
+    timeout=30
+):
 
-    global _embedding_model
+    models = [model]
 
-    if SentenceTransformer is None:
+    if (
+        use_fallback_model
+        and MISTRAL_CHAT_MODEL_FALLBACK
+        and MISTRAL_CHAT_MODEL_FALLBACK != model
+    ):
+        models.append(MISTRAL_CHAT_MODEL_FALLBACK)
 
-        raise RuntimeError(
-            "sentence-transformers is not installed"
-        )
+    last_error = None
 
-    if _embedding_model is None:
+    for model_name in models:
 
-        print(
-            "LOADING EMBEDDING MODEL:",
-            EMBEDDING_MODEL_NAME
-        )
+        payload = {
+            "model": model_name,
+            "messages": messages,
+            "max_tokens": max_tokens,
+            "temperature": temperature
+        }
 
-        _embedding_model = SentenceTransformer(
-            EMBEDDING_MODEL_NAME
-        )
+        if json_mode:
+            payload["response_format"] = {"type": "json_object"}
 
-        print(
-            "EMBEDDING MODEL LOADED"
-        )
+        try:
 
-    return _embedding_model
+            data = _mistral_post("chat/completions", payload, timeout=timeout)
+
+            return (data["choices"][0]["message"]["content"] or "").strip()
+
+        except Exception as error:
+
+            last_error = error
+
+    raise RuntimeError(f"Mistral chat failed: {last_error}")
 
 
 def generate_embeddings(texts):
 
-    if not texts:
+    """Embed texts with mistral-embed. Batches run in parallel for speed."""
 
+    if not texts:
         return []
 
-    model = get_embedding_model()
+    batch_size = 32
 
-    embeddings = model.encode(
-        texts,
-        normalize_embeddings=True
-    )
-
-    return [
-        embedding.tolist()
-        for embedding in embeddings
+    batches = [
+        texts[start:start + batch_size]
+        for start in range(0, len(texts), batch_size)
     ]
+
+    def embed_batch(batch):
+
+        data = _mistral_post(
+            "embeddings",
+            {"model": MISTRAL_EMBED_MODEL, "input": batch},
+            timeout=60
+        )
+
+        items = sorted(data["data"], key=lambda item: item["index"])
+
+        return [item["embedding"] for item in items]
+
+    if len(batches) == 1:
+        return embed_batch(batches[0])
+
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        results = list(executor.map(embed_batch, batches))
+
+    return [embedding for batch in results for embedding in batch]
+
+
+@lru_cache(maxsize=512)
+def _cached_query_embedding(query):
+
+    return tuple(generate_embeddings([query])[0])
+
+
+def _vector_literal(embedding):
+
+    return "[" + ",".join(f"{value:.7f}" for value in embedding) + "]"
 
 
 # ---------------------------------------------------------
-# DELETE DOCUMENT FROM CHROMADB
+# SUPABASE REST / STORAGE
+# ---------------------------------------------------------
+
+def _supabase_headers(extra=None):
+
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        raise RuntimeError("SUPABASE_URL / SUPABASE_SERVICE_KEY are not configured")
+
+    headers = {
+        "apikey": SUPABASE_SERVICE_KEY,
+        "Authorization": f"Bearer {SUPABASE_SERVICE_KEY}"
+    }
+
+    if extra:
+        headers.update(extra)
+
+    return headers
+
+
+def _supabase_check(response, action):
+
+    if response.status_code >= 300:
+        raise RuntimeError(
+            f"Supabase {action} failed: HTTP {response.status_code} "
+            f"{response.text[:300]}"
+        )
+
+
+def get_document_storage_path(document_id):
+
+    return f"documents/{int(document_id)}.pdf"
+
+
+def upload_pdf_to_bucket(document_id, file_data):
+
+    response = _http.post(
+        f"{SUPABASE_URL}/storage/v1/object/{SUPABASE_BUCKET}/"
+        f"{get_document_storage_path(document_id)}",
+        data=file_data,
+        headers=_supabase_headers({
+            "Content-Type": "application/pdf",
+            "x-upsert": "true"
+        }),
+        timeout=120
+    )
+
+    _supabase_check(response, "storage upload")
+
+    print("PDF STORED IN BUCKET:", SUPABASE_BUCKET, get_document_storage_path(document_id))
+
+
+def download_pdf_from_bucket(document_id):
+
+    response = _http.get(
+        f"{SUPABASE_URL}/storage/v1/object/{SUPABASE_BUCKET}/"
+        f"{get_document_storage_path(document_id)}",
+        headers=_supabase_headers(),
+        timeout=120
+    )
+
+    if response.status_code in (400, 404):
+        return None
+
+    _supabase_check(response, "storage download")
+
+    return response.content
+
+
+def delete_pdf_from_bucket(document_id):
+
+    try:
+
+        response = _http.delete(
+            f"{SUPABASE_URL}/storage/v1/object/{SUPABASE_BUCKET}",
+            json={"prefixes": [get_document_storage_path(document_id)]},
+            headers=_supabase_headers(),
+            timeout=30
+        )
+
+        _supabase_check(response, "storage delete")
+
+    except Exception as error:
+
+        print("BUCKET DELETE WARNING:", error)
+
+
+# ---------------------------------------------------------
+# DELETE DOCUMENT CHUNKS FROM SUPABASE
 # ---------------------------------------------------------
 
 def delete_document(document_id):
 
     try:
 
-        collection = get_chroma_collection()
-
-        existing_count = collection.count()
-
-        print(
-            "CHROMADB COUNT BEFORE DELETE:",
-            existing_count
+        response = _http.delete(
+            f"{SUPABASE_URL}/rest/v1/rag_chunks",
+            params={"document_id": f"eq.{int(document_id)}"},
+            headers=_supabase_headers({"Prefer": "return=minimal"}),
+            timeout=30
         )
 
-        collection.delete(
-            where={
-                "document_id": int(document_id)
-            }
-        )
+        _supabase_check(response, "chunk delete")
 
-        after_count = collection.count()
+        _cached_query_embedding.cache_clear()
 
-        print(
-            "CHROMADB COUNT AFTER DELETE:",
-            after_count
-        )
+        print("SUPABASE CHUNKS DELETED FOR DOCUMENT:", document_id)
 
         return True
 
     except Exception as error:
 
-        print(
-            "CHROMADB DELETE ERROR:",
-            error
-        )
+        print("SUPABASE DELETE ERROR:", error)
 
         raise RuntimeError(
             "Unable to remove document from knowledge base"
@@ -619,10 +867,10 @@ def delete_document(document_id):
 
 
 # ---------------------------------------------------------
-# ADD PDF DOCUMENT TO CHROMADB
+# ADD PDF DOCUMENT TO SUPABASE VECTOR STORE
 # ---------------------------------------------------------
 
-def add_document_to_chromadb(
+def add_document_to_vector_store(
     document_id,
     document_name,
     pages
@@ -630,448 +878,241 @@ def add_document_to_chromadb(
 
     if not pages:
 
-        print(
-            "NO PDF PAGES RECEIVED"
-        )
+        print("NO PDF PAGES RECEIVED")
 
         return 0
 
-    collection = get_chroma_collection()
-
-    # -----------------------------------------------------
-    # REMOVE OLD CHUNKS FOR THIS DOCUMENT
-    # -----------------------------------------------------
-
-    try:
-
-        collection.delete(
-            where={
-                "document_id": int(document_id)
-            }
-        )
-
-    except Exception as error:
-
-        print(
-            "OLD CHUNKS DELETE WARNING:",
-            error
-        )
-
-    # -----------------------------------------------------
-    # CHUNK SETTINGS
-    # -----------------------------------------------------
+    # Remove old chunks for this document (re-upload safety)
+    delete_document(document_id)
 
     chunk_size = 1000
-
     overlap = 150
 
     chunks = []
 
-    # -----------------------------------------------------
-    # CREATE CHUNKS
-    # -----------------------------------------------------
-
     for page_number, page_text in pages:
 
         if not page_text:
-
             continue
 
-        page_text = re.sub(
-            r"\s+",
-            " ",
-            page_text
-        ).strip()
+        page_text = re.sub(r"\s+", " ", page_text).strip()
 
         if not page_text:
-
             continue
 
         start = 0
 
-        local_chunk_number = 0
-
         while start < len(page_text):
 
-            end = min(
-                start + chunk_size,
-                len(page_text)
-            )
+            end = min(start + chunk_size, len(page_text))
 
             chunk_text = page_text[start:end].strip()
 
             if chunk_text:
-
                 chunks.append({
                     "text": chunk_text,
-                    "page_number": page_number,
-                    "chunk_number": local_chunk_number
+                    "page_number": page_number
                 })
 
             if end >= len(page_text):
-
                 break
 
-            start = max(
-                end - overlap,
-                start + 1
-            )
-
-            local_chunk_number += 1
-
-    # -----------------------------------------------------
-    # CHECK CHUNKS
-    # -----------------------------------------------------
+            start = max(end - overlap, start + 1)
 
     if not chunks:
 
-        print(
-            "NO TEXT CHUNKS CREATED FROM PDF"
-        )
+        print("NO TEXT CHUNKS CREATED FROM PDF")
 
         return 0
 
-    print(
-        "PDF CHUNKS CREATED:",
-        len(chunks)
-    )
+    print("PDF CHUNKS CREATED:", len(chunks))
 
-    # -----------------------------------------------------
-    # GET TEXTS
-    # -----------------------------------------------------
+    embeddings = generate_embeddings([item["text"] for item in chunks])
 
-    texts = [
-        item["text"]
-        for item in chunks
+    if len(embeddings) != len(chunks):
+        raise RuntimeError("Embedding count does not match chunk count")
+
+    print("MISTRAL EMBEDDINGS CREATED:", len(embeddings))
+
+    rows = [
+        {
+            "document_id": int(document_id),
+            "document_name": str(document_name),
+            "chunk_index": index,
+            "page_number": int(item["page_number"]),
+            "chunk_text": item["text"],
+            "embedding": _vector_literal(embedding)
+        }
+        for index, (item, embedding) in enumerate(zip(chunks, embeddings))
     ]
 
-    # -----------------------------------------------------
-    # CREATE EMBEDDINGS
-    # -----------------------------------------------------
+    for start in range(0, len(rows), 100):
 
-    print(
-        "GENERATING EMBEDDINGS..."
-    )
-
-    embeddings = generate_embeddings(
-        texts
-    )
-
-    if not embeddings:
-
-        raise RuntimeError(
-            "Unable to generate document embeddings"
+        response = _http.post(
+            f"{SUPABASE_URL}/rest/v1/rag_chunks",
+            json=rows[start:start + 100],
+            headers=_supabase_headers({
+                "Content-Type": "application/json",
+                "Prefer": "return=minimal"
+            }),
+            timeout=60
         )
 
-    if len(embeddings) != len(texts):
+        _supabase_check(response, "chunk insert")
 
-        raise RuntimeError(
-            "Embedding count does not match chunk count"
-        )
+    _cached_query_embedding.cache_clear()
 
-    print(
-        "EMBEDDINGS CREATED:",
-        len(embeddings)
-    )
+    print("SUPABASE CHUNKS STORED FOR DOCUMENT", document_id, ":", len(rows))
 
-    # -----------------------------------------------------
-    # CREATE CHROMADB DATA
-    # -----------------------------------------------------
-
-    ids = []
-
-    documents = []
-
-    metadatas = []
-
-    for index, item in enumerate(chunks):
-
-        chunk_id = (
-            f"document_{document_id}_"
-            f"chunk_{index + 1}"
-        )
-
-        ids.append(chunk_id)
-
-        documents.append(
-            item["text"]
-        )
-
-        metadatas.append({
-
-            "document_id": int(
-                document_id
-            ),
-
-            "document_name": str(
-                document_name
-            ),
-
-            "chunk_id": chunk_id,
-
-            "page_number": int(
-                item["page_number"]
-            )
-
-        })
-
-    # -----------------------------------------------------
-    # STORE IN CHROMADB
-    # -----------------------------------------------------
-
-    print(
-        "ADDING CHUNKS TO CHROMADB..."
-    )
-
-    collection.add(
-        ids=ids,
-        documents=documents,
-        embeddings=embeddings,
-        metadatas=metadatas
-    )
-
-    # -----------------------------------------------------
-    # VERIFY STORAGE
-    # -----------------------------------------------------
-
-    final_count = collection.count()
-
-    print(
-        "CHROMADB TOTAL CHUNKS AFTER UPLOAD:",
-        final_count
-    )
-
-    # -----------------------------------------------------
-    # VERIFY THIS DOCUMENT
-    # -----------------------------------------------------
-
-    try:
-
-        verification = collection.get(
-            where={
-                "document_id": int(document_id)
-            }
-        )
-
-        stored_documents = (
-            verification.get(
-                "documents",
-                []
-            )
-            if verification
-            else []
-        )
-
-        print(
-            "CHROMADB STORED CHUNKS FOR DOCUMENT",
-            document_id,
-            ":",
-            len(stored_documents)
-        )
-
-    except Exception as error:
-
-        print(
-            "CHROMADB VERIFICATION WARNING:",
-            error
-        )
-
-    return len(chunks)
+    return len(rows)
 
 
 # ---------------------------------------------------------
-# RETRIEVE RELEVANT CHUNKS FROM CHROMADB
+# RERANK CANDIDATES WITH MISTRAL
+# ---------------------------------------------------------
+
+def rerank_chunks(query, candidates, top_k):
+
+    # Nothing to narrow down: skip the extra LLM round trip
+    if len(candidates) <= top_k:
+        return candidates
+
+    passages = "\n\n".join(
+        f"[{index}] {item['text'][:600]}"
+        for index, item in enumerate(candidates)
+    )
+
+    prompt = (
+        "Rank the passages by how useful they are for answering the question.\n"
+        f"Question: {query}\n\n"
+        f"Passages:\n{passages}\n\n"
+        f"Return JSON only: {{\"ranking\": [passage numbers, most relevant first]}}. "
+        f"Include at most {top_k} passages and leave out irrelevant ones."
+    )
+
+    try:
+
+        content = mistral_chat(
+            [{"role": "user", "content": prompt}],
+            model=MISTRAL_RERANK_MODEL,
+            max_tokens=60,
+            temperature=0,
+            json_mode=True,
+            use_fallback_model=False,
+            timeout=10
+        )
+
+        parsed = json.loads(content)
+
+        # Accept {"ranking": [...]} or a bare list
+        ranking = (
+            parsed.get("ranking", [])
+            if isinstance(parsed, dict)
+            else parsed
+            if isinstance(parsed, list)
+            else []
+        )
+
+        ranked = []
+        seen = set()
+
+        for value in ranking:
+
+            try:
+                index = int(value)
+            except (TypeError, ValueError):
+                continue
+
+            if 0 <= index < len(candidates) and index not in seen:
+                seen.add(index)
+                ranked.append(candidates[index])
+
+        if ranked:
+            return ranked[:top_k]
+
+        # Reranker found nothing relevant: keep the closest few for the answer model to judge
+        return candidates[:2]
+
+    except Exception as error:
+
+        print("RERANK FAILED, USING SIMILARITY ORDER:", error)
+
+        return candidates[:top_k]
+
+
+# ---------------------------------------------------------
+# RETRIEVE RELEVANT CHUNKS FROM SUPABASE
 # ---------------------------------------------------------
 
 def retrieve_relevant_chunks(
     query,
-    number_of_results=6
+    number_of_results=None
 ):
 
     if not query:
+        return []
+
+    top_k = number_of_results or RAG_TOP_K
+
+    started = time.perf_counter()
+
+    query_embedding = _cached_query_embedding(query)
+
+    embedded = time.perf_counter()
+
+    response = _http.post(
+        f"{SUPABASE_URL}/rest/v1/rpc/match_rag_chunks",
+        json={
+            "query_embedding": _vector_literal(query_embedding),
+            "match_count": max(RAG_CANDIDATES, top_k)
+        },
+        headers=_supabase_headers({"Content-Type": "application/json"}),
+        timeout=20
+    )
+
+    _supabase_check(response, "vector search")
+
+    searched = time.perf_counter()
+
+    candidates = [
+        {
+            "text": row.get("chunk_text") or "",
+            "metadata": {
+                "document_id": row.get("document_id"),
+                "document_name": row.get("document_name"),
+                "page_number": row.get("page_number"),
+                "chunk_index": row.get("chunk_index")
+            },
+            "distance": 1 - float(row.get("similarity") or 0)
+        }
+        for row in response.json()
+        if row.get("chunk_text")
+    ]
+
+    if not candidates:
+
+        print("SUPABASE VECTOR STORE RETURNED NO CHUNKS")
 
         return []
 
-    collection = get_chroma_collection()
-
-    # -----------------------------------------------------
-    # CHECK TOTAL CHUNKS
-    # -----------------------------------------------------
-
-    total_documents = collection.count()
+    retrieved = rerank_chunks(query, candidates, top_k)
 
     print(
-        "CHROMADB TOTAL CHUNKS:",
-        total_documents
+        f"RAG TIMING: embed={embedded - started:.2f}s "
+        f"search={searched - embedded:.2f}s "
+        f"rerank={time.perf_counter() - searched:.2f}s "
+        f"candidates={len(candidates)} kept={len(retrieved)}"
     )
 
-    if total_documents == 0:
+    for index, item in enumerate(retrieved, start=1):
 
-        print(
-            "CHROMADB IS EMPTY"
-        )
-
-        return []
-
-    # -----------------------------------------------------
-    # CREATE QUERY EMBEDDING
-    # -----------------------------------------------------
-
-    print(
-        "CREATING QUERY EMBEDDING..."
-    )
-
-    query_embedding = generate_embeddings(
-        [query]
-    )[0]
-
-    # -----------------------------------------------------
-    # LIMIT RESULTS
-    # -----------------------------------------------------
-
-    number_of_results = min(
-        number_of_results,
-        total_documents
-    )
-
-    # -----------------------------------------------------
-    # QUERY CHROMADB
-    # -----------------------------------------------------
-
-    print(
-        "QUERYING CHROMADB FOR:",
-        query
-    )
-
-    result = collection.query(
-
-        query_embeddings=[
-            query_embedding
-        ],
-
-        n_results=number_of_results,
-
-        include=[
-            "documents",
-            "metadatas",
-            "distances"
-        ]
-    )
-
-    # -----------------------------------------------------
-    # GET DOCUMENTS
-    # -----------------------------------------------------
-
-    documents = (
-        result.get(
-            "documents",
-            [[]]
-        )[0]
-        if result.get("documents")
-        else []
-    )
-
-    # -----------------------------------------------------
-    # GET METADATA
-    # -----------------------------------------------------
-
-    metadatas = (
-        result.get(
-            "metadatas",
-            [[]]
-        )[0]
-        if result.get("metadatas")
-        else []
-    )
-
-    # -----------------------------------------------------
-    # GET DISTANCES
-    # -----------------------------------------------------
-
-    distances = (
-        result.get(
-            "distances",
-            [[]]
-        )[0]
-        if result.get("distances")
-        else []
-    )
-
-    retrieved = []
-
-    # -----------------------------------------------------
-    # BUILD RETRIEVED RESULT
-    # -----------------------------------------------------
-
-    for index, document in enumerate(documents):
-
-        if not document:
-
-            continue
-
-        metadata = (
-
-            metadatas[index]
-
-            if index < len(metadatas)
-
-            else {}
-
-        )
-
-        distance = (
-
-            distances[index]
-
-            if index < len(distances)
-
-            else None
-
-        )
-
-        retrieved.append({
-
-            "text": document,
-
-            "metadata": metadata,
-
-            "distance": distance
-
-        })
-
-    print(
-        "CHROMADB RETRIEVED CHUNKS:",
-        len(retrieved)
-    )
-
-    # -----------------------------------------------------
-    # PRINT RETRIEVED DOCUMENT INFORMATION
-    # -----------------------------------------------------
-
-    for index, item in enumerate(
-        retrieved,
-        start=1
-    ):
-
-        metadata = item.get(
-            "metadata",
-            {}
-        )
+        metadata = item["metadata"]
 
         print(
             f"RETRIEVED CHUNK {index}:",
-            "document=",
-            metadata.get(
-                "document_name"
-            ),
-            "page=",
-            metadata.get(
-                "page_number"
-            ),
-            "distance=",
-            item.get(
-                "distance"
-            )
+            "document=", metadata.get("document_name"),
+            "page=", metadata.get("page_number"),
+            "distance=", round(item["distance"], 4)
         )
 
     return retrieved
@@ -1160,17 +1201,13 @@ def knowledge_retrieval_agent(processed_query):
         return []
 
     return retrieve_relevant_chunks(
-        cleaned_question,
-        number_of_results=6
+        cleaned_question
     )
-
-
-import ollama
 
 
 # =========================================================
 # AGENT 3 - RESPONSE GENERATION AGENT
-# LOCAL LLM - NO EXTERNAL API
+# MISTRAL API
 # =========================================================
 
 def response_generation_agent(
@@ -1205,7 +1242,7 @@ def response_generation_agent(
         )
 
     # -----------------------------------------------------
-    # BUILD CONTEXT FROM CHROMADB RESULTS
+    # BUILD CONTEXT FROM RETRIEVED CHUNKS
     # -----------------------------------------------------
 
     context_parts = []
@@ -1234,54 +1271,73 @@ def response_generation_agent(
     # PREPARE PROMPT
     # -----------------------------------------------------
 
+    system_prompt = f"""
+You are the customer-support assistant for BlensCart (also written
+BlenceKart / BLENCEKART), a smart-eyewear brand.
+
+RULES:
+1. Only answer questions about BlensCart: the company, its eyewear,
+   the smart chip and app, stores, timings, orders, delivery,
+   payments, prices, offers, returns, warranty, careers, privacy and
+   support. Questions addressed to "you" / "your" (for example
+   "Do you deliver to Delhi?") are questions about BlensCart.
+2. Only if the question is clearly unrelated to BlensCart (for
+   example politics, celebrities, general knowledge, coding, maths,
+   or questions about other companies), reply with exactly
+   {OUT_OF_SCOPE_MARKER} and nothing else. If you are unsure, treat
+   it as a BlensCart question and follow rule 4.
+3. Use only facts stated in the BLENSCART INFORMATION. Do not add
+   technical details, numbers, policies or features that are not
+   stated there, even if they seem likely.
+4. If the question is about BlensCart but the information does not
+   cover it, say you don't have that information and suggest
+   contacting BlensCart support or visiting a BlensCart store.
+5. Never mention "documents", "the provided information", "context",
+   "knowledge base", databases or internal processing. Speak as
+   BlensCart support.
+6. Answer directly, clearly and concisely. Use short bullet points
+   only when listing several items.
+"""
+
     prompt = f"""
-You are the customer-support assistant for BlensCart.
-
-Answer the user's question using the supplied document
-information.
-
-USER QUESTION:
-{question}
-
-DOCUMENT INFORMATION:
+BLENSCART INFORMATION:
 {context}
 
-INSTRUCTIONS:
-1. Answer the user's actual question directly.
-2. Use the supplied document information as your source.
-3. Do not invent product details, policies, or features.
-4. If the information is insufficient, clearly say so.
-5. Do not treat unsupported assumptions as facts.
-6. Give a clear, concise, natural answer.
-7. Do not mention internal processing or databases.
-8. If the question is unrelated to the documents,
-   explain that the available documents do not contain
-   enough information to answer it.
+CUSTOMER QUESTION:
+{question}
 """
 
     # -----------------------------------------------------
-    # GENERATE ANSWER USING LOCAL LLM
+    # GENERATE ANSWER USING MISTRAL
     # -----------------------------------------------------
 
-    response = ollama.chat(
-        model="qwen2.5:3b",
-        messages=[
+    started = time.perf_counter()
+
+    answer = mistral_chat(
+        [
+            {
+                "role": "system",
+                "content": system_prompt
+            },
             {
                 "role": "user",
                 "content": prompt
             }
         ],
-        options={
-            "temperature": 0.1
-        }
+        model=MISTRAL_CHAT_MODEL,
+        max_tokens=500,
+        temperature=0.1
     )
 
-    answer = response["message"]["content"].strip()
+    print(f"RAG TIMING: answer={time.perf_counter() - started:.2f}s")
 
     if not answer:
         raise RuntimeError(
-            "The local LLM returned an empty response."
+            "Mistral returned an empty response."
         )
+
+    if OUT_OF_SCOPE_MARKER in answer:
+        return OUT_OF_SCOPE_MESSAGE
 
     return answer
 
@@ -2671,6 +2727,24 @@ def send_chat_message(
             )
 
         # -------------------------------------------------
+        # START RAG PIPELINE EARLY (valid session only)
+        # It runs in parallel with the database work below.
+        # -------------------------------------------------
+
+        session_token = (
+            authorization[7:].strip()
+            if authorization
+            and authorization.lower().startswith("bearer ")
+            else ""
+        )
+
+        rag_future = (
+            _rag_executor.submit(orchestrator_agent, message)
+            if session_token in USER_SESSIONS
+            else None
+        )
+
+        # -------------------------------------------------
         # AUTHENTICATE USER
         # -------------------------------------------------
 
@@ -2717,9 +2791,9 @@ def send_chat_message(
         try:
 
             final_answer = (
-                orchestrator_agent(
-                    message
-                )
+                rag_future.result()
+                if rag_future
+                else orchestrator_agent(message)
             )
 
         except RuntimeError as error:
@@ -3027,7 +3101,7 @@ async def upload_document(
             (
                 file.filename,
                 file_size,
-                psycopg2.Binary(file_data),
+                None,  # the PDF itself lives in the Supabase bucket
                 admin_id
             )
         )
@@ -3118,11 +3192,16 @@ async def upload_document(
             )
 
             # -------------------------------------------------
-            # ADD TO CHROMADB
+            # STORE PDF IN BUCKET + EMBED INTO SUPABASE
             # -------------------------------------------------
 
+            upload_pdf_to_bucket(
+                document_id,
+                file_data
+            )
+
             chunks_added = (
-                add_document_to_chromadb(
+                add_document_to_vector_store(
                     document_id,
                     file.filename,
                     pages
@@ -3147,9 +3226,17 @@ async def upload_document(
         except Exception as error:
 
             print(
-                "PDF/CHROMADB PROCESSING ERROR:",
+                "PDF/SUPABASE PROCESSING ERROR:",
                 error
             )
+
+            # Undo partial Supabase writes
+            try:
+                delete_document(document_id)
+            except Exception:
+                pass
+
+            delete_pdf_from_bucket(document_id)
 
             # Remove the PostgreSQL document because
             # indexing was unsuccessful.
@@ -3178,7 +3265,7 @@ async def upload_document(
             )
 
         # -------------------------------------------------
-        # COMMIT ONLY AFTER CHROMADB SUCCESS
+        # COMMIT ONLY AFTER SUPABASE SUCCESS
         # -------------------------------------------------
 
         connection.commit()
@@ -3593,6 +3680,11 @@ def view_document(document_id: int):
         ]
 
         if not file_data:
+            file_data = download_pdf_from_bucket(
+                document_id
+            )
+
+        if not file_data:
 
             raise HTTPException(
                 status_code=404,
@@ -4001,6 +4093,10 @@ def permanently_delete_document(
             )
 
         connection.commit()
+
+        delete_pdf_from_bucket(
+            document_id
+        )
 
         return {
 
